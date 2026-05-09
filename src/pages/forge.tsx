@@ -158,7 +158,7 @@ const HeroCard = memo(function HeroCard({ todayPct, todayDone, todayTotal, weekD
                             );
                         })}
                     </div>
-                    <div className="flex items-center gap-3 text-[10px] font-mono text-muted-foreground justify-center">
+                    <div className="flex items-center gap-3 text-[12px] font-mono text-muted-foreground justify-center">
                         <span>📊 Avg: <span className="text-cyan-400">{weekAvg}%</span></span>
                         <span className="flex items-center gap-1">
                             {trend >= 0 ? <TrendingUp className="w-2.5 h-2.5 text-green-400" /> : <TrendingDown className="w-2.5 h-2.5 text-red-400" />}
