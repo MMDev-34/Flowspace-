@@ -147,7 +147,7 @@ interface AppState {
   setTaskStatus: (id: string, status: TaskStatus) => void;
   deleteTask: (id: string) => void;
 
-  // ── Log actions ───────────────────────────────────────────────────────────
+  // ── Log actions ────────────────────────────��──────────────────────────────
   log: (type: LogType, msg: string, category: string) => void;
   clearLogs: () => void;
 
@@ -166,7 +166,7 @@ interface AppState {
   deleteCalendarEvent: (id: string) => void;
 
   // ── Notes actions ─────────────────────────────────────────────────────────
-  addNote: (note: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  addNote: (note: Omit<Note, 'createdAt' | 'updatedAt'> & Partial<Pick<Note, 'createdAt' | 'updatedAt'>>) => void;
   updateNote: (id: string, patch: Partial<Note>) => void;
   trashNote: (id: string) => void;
   restoreNote: (id: string) => void;
@@ -214,7 +214,7 @@ const generateDummyCompletions = (probability: number): Record<string, boolean> 
   return completions;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────���───────────────────────────────────────────────────────────
 // POMODORO TIMER (module-level)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -418,7 +418,7 @@ export const useAppStore = create<AppState>()(
 
       // ── Notes ─────────────────────────────────────────────────────────────
       addNote: (note) => {
-        const n: Note = { ...note, id: generateId(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+        const n: Note = { createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...note };
         set((s) => ({ notes: [n, ...s.notes] }));
       },
       updateNote: (id, patch) => set((s) => ({ notes: s.notes.map((n) => (n.id === id ? { ...n, ...patch, updatedAt: new Date().toISOString() } : n)) })),

@@ -74,17 +74,18 @@ const NOTE_COLORS = [
 
 // ── Helpers ──────────────────────────────────────────────────
 
-function stripHtml(html: string): string {
-    return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+function stripHtml(html: string | undefined | null): string {
+    return (html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
-function countWords(html: string): number {
+function countWords(html: string | undefined | null): number {
     const t = stripHtml(html);
     return t ? t.split(/\s+/).length : 0;
 }
 function genId(): string {
     return Math.random().toString(36).slice(2, 11);
 }
-function timeAgo(d: string): string {
+function timeAgo(d: string | undefined | null): string {
+    if (!d) return '';
     const diff = Date.now() - new Date(d).getTime();
     const m = Math.floor(diff / 60000);
     if (m < 1) return 'just now';
@@ -99,15 +100,17 @@ function readTime(words: number): string {
     const min = Math.ceil(words / 200);
     return min <= 0 ? '<1 min' : `${min} min`;
 }
-function fuzzyMatch(q: string, text: string): boolean {
+function fuzzyMatch(q: string, text: string | undefined | null): boolean {
     if (!q) return true;
+    if (!text) return false;
     const ql = q.toLowerCase();
     const tl = text.toLowerCase();
     let qi = 0;
     for (let i = 0; i < tl.length && qi < ql.length; i++) if (tl[i] === ql[qi]) qi++;
     return qi === ql.length;
 }
-function highlightText(text: string, query: string) {
+function highlightText(text: string | undefined | null, query: string) {
+    if (!text) return '';
     if (!query.trim()) return text;
     const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
@@ -244,11 +247,11 @@ function LexicalNoteEditor({ note, onSave, saveTimerRef, setSaveStatus }: {
 
 function FormatButton({ icon, title, format, active }: { icon: React.ReactNode; title: string; format: string; active: boolean }) {
     const [editor] = useLexicalComposerContext();
-    return <button title={title} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, format as any)} className={cn('p-1.5 rounded-md transition-all', active ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-hover hover:text-foreground')}>{icon}</button>;
+    return <button title={title} onMouseDown={e => e.preventDefault()} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, format as any)} className={cn('p-1.5 rounded-md transition-all', active ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-hover hover:text-foreground')}>{icon}</button>;
 }
 function EditorButton({ icon, title, cmd }: { icon: React.ReactNode; title: string; cmd: any }) {
     const [editor] = useLexicalComposerContext();
-    return <button title={title} onClick={() => editor.dispatchCommand(cmd, undefined)} className="p-1.5 rounded-md text-muted-foreground hover:bg-hover hover:text-foreground transition-all">{icon}</button>;
+    return <button title={title} onMouseDown={e => e.preventDefault()} onClick={() => editor.dispatchCommand(cmd, undefined)} className="p-1.5 rounded-md text-muted-foreground hover:bg-hover hover:text-foreground transition-all">{icon}</button>;
 }
 function BlockButton({ icon, title, blockType, current }: { icon: React.ReactNode; title: string; blockType: string; current: string }) {
     const [editor] = useLexicalComposerContext();
@@ -266,7 +269,7 @@ function BlockButton({ icon, title, blockType, current }: { icon: React.ReactNod
         });
     };
     return (
-        <button title={title} onClick={handleClick} className={cn('p-1.5 rounded-md transition-all', active ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-hover hover:text-foreground')}>
+        <button title={title} onMouseDown={e => e.preventDefault()} onClick={handleClick} className={cn('p-1.5 rounded-md transition-all', active ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-hover hover:text-foreground')}>
             {icon}
         </button>
     );
@@ -282,7 +285,7 @@ function QuoteButton({ icon, title, active }: { icon: React.ReactNode; title: st
         });
     };
     return (
-        <button title={title} onClick={handleClick} className={cn('p-1.5 rounded-md transition-all', active ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-hover hover:text-foreground')}>
+        <button title={title} onMouseDown={e => e.preventDefault()} onClick={handleClick} className={cn('p-1.5 rounded-md transition-all', active ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-hover hover:text-foreground')}>
             {icon}
         </button>
     );
@@ -298,21 +301,21 @@ function CodeBlockButton({ icon, title, active }: { icon: React.ReactNode; title
         });
     };
     return (
-        <button title={title} onClick={handleClick} className={cn('p-1.5 rounded-md transition-all', active ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-hover hover:text-foreground')}>
+        <button title={title} onMouseDown={e => e.preventDefault()} onClick={handleClick} className={cn('p-1.5 rounded-md transition-all', active ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-hover hover:text-foreground')}>
             {icon}
         </button>
     );
 }
 function ListButton({ icon, title, ordered }: { icon: React.ReactNode; title: string; ordered: boolean }) {
     const [editor] = useLexicalComposerContext();
-    return <button title={title} onClick={() => editor.dispatchCommand(ordered ? INSERT_ORDERED_LIST_COMMAND : INSERT_UNORDERED_LIST_COMMAND, undefined)} className="p-1.5 rounded-md text-muted-foreground hover:bg-hover hover:text-foreground transition-all">{icon}</button>;
+    return <button title={title} onMouseDown={e => e.preventDefault()} onClick={() => editor.dispatchCommand(ordered ? INSERT_ORDERED_LIST_COMMAND : INSERT_UNORDERED_LIST_COMMAND, undefined)} className="p-1.5 rounded-md text-muted-foreground hover:bg-hover hover:text-foreground transition-all">{icon}</button>;
 }
 function LinkButton({ icon, title }: { icon: React.ReactNode; title: string }) {
     const [editor] = useLexicalComposerContext();
-    return <button title={title} onClick={() => { const url = prompt('Enter URL:'); if (url) editor.dispatchCommand(TOGGLE_LINK_COMMAND, url.startsWith('http') ? url : `https://${url}`); }} className="p-1.5 rounded-md text-muted-foreground hover:bg-hover hover:text-foreground transition-all">{icon}</button>;
+    return <button title={title} onMouseDown={e => e.preventDefault()} onClick={() => { const url = prompt('Enter URL:'); if (url) editor.dispatchCommand(TOGGLE_LINK_COMMAND, url.startsWith('http') ? url : `https://${url}`); }} className="p-1.5 rounded-md text-muted-foreground hover:bg-hover hover:text-foreground transition-all">{icon}</button>;
 }
 
-// ── Note Card (fixed size, color left border, search highlight, hover border glow) ──
+// ── Note Card (fixed size, color left border, search highlight, hover border glow) ��─
 
 const NoteCard = memo(function NoteCard({
     note, isActive, isNew, isDeleting, isBouncing, searchQuery, onOpen, onPin, onStar, onTrash, onRestore, onPermDelete,
@@ -502,14 +505,11 @@ export default function NotesPage() {
     const createNote = useCallback(() => {
         const id = genId();
         const now = new Date().toISOString();
-        addNote({ id, title: 'Untitled', body: '', tags: [], pinned: false, starred: false, deleted: false, color: '#6366f1', wordCount: 0, createdAt: now, updatedAt: now } as any);
+        const newNote = { id, title: 'Untitled', body: '', tags: [], pinned: false, starred: false, deleted: false, color: '#6366f1', wordCount: 0, createdAt: now, updatedAt: now } as any;
+        addNote(newNote);
         setNewNoteId(id);
         setTimeout(() => setNewNoteId(null), 1000);
-        // Auto-open new note
-        setTimeout(() => {
-            const found = useAppStore.getState().notes.find(n => n.id === id);
-            if (found) openNote(found);
-        }, 50);
+        openNote(newNote);
     }, [addNote, openNote]);
 
     const saveTitle = useCallback(() => { if (!activeNoteId || !titleRef.current) return; updateNote(activeNoteId, { title: titleRef.current.innerText.trim() || 'Untitled' }); }, [activeNoteId, updateNote]);
@@ -525,8 +525,8 @@ export default function NotesPage() {
     const handlePin = useCallback((id: string) => { const n = notes.find(x => x.id === id); if (n) updateNote(id, { pinned: !n.pinned }); setBouncingId(id); setTimeout(() => setBouncingId(null), 400); }, [notes, updateNote]);
     const handleStar = useCallback((id: string) => { const n = notes.find(x => x.id === id); if (n) updateNote(id, { starred: !n.starred }); setBouncingId(id); setTimeout(() => setBouncingId(null), 400); }, [notes, updateNote]);
 
-    const handleTagKey = useCallback((e: React.KeyboardEvent) => { if (!activeNoteId) return; const note = notes.find(n => n.id === activeNoteId); const tags = note?.tags ?? []; if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); const tag = tagInput.trim().toLowerCase().replace(/\s+/g, '-'); if (!tag || tags.includes(tag)) return; updateNote(activeNoteId, { tags: [...tags, tag] }); setTagInput(''); } else if (e.key === 'Backspace' && !tagInput && tags.length > 0) { updateNote(activeNoteId, { tags: tags.slice(0, -1) }); } }, [activeNoteId, tagInput, notes, updateNote]);
-    const removeTag = useCallback((tag: string) => { if (!activeNote) return; updateNote(activeNote.id, { tags: activeNote.tags.filter(t => t !== tag) }); }, [activeNote, updateNote]);
+    const handleTagKey = useCallback((e: React.KeyboardEvent) => { if (!activeNoteId) return; const note = notes.find(n => n.id === activeNoteId); const tags = note?.tags ?? []; if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); const tag = tagInput.trim().toLowerCase().replace(/\s+/g, '-'); if (!tag || tags.includes(tag)) { setTagInput(''); return; } updateNote(activeNoteId, { tags: [...tags, tag] }); setTagInput(''); } else if (e.key === 'Backspace' && !tagInput && tags.length > 0) { updateNote(activeNoteId, { tags: tags.slice(0, -1) }); } }, [activeNoteId, tagInput, notes, updateNote]);
+    const removeTag = useCallback((tag: string) => { if (!activeNote) return; updateNote(activeNote.id, { tags: (activeNote.tags || []).filter(t => t !== tag) }); }, [activeNote, updateNote]);
 
     useEffect(() => {
         const h = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key === 'n') { e.preventDefault(); createNote(); } if (e.key === 'Escape' && panelOpen) closePanel(); };
@@ -659,6 +659,11 @@ export default function NotesPage() {
                             <div ref={titleRef} contentEditable={!activeNote.deleted} suppressContentEditableWarning
                                 className={cn('text-xl font-bold outline-none text-foreground leading-tight empty:before:content-["Untitled"] empty:before:text-muted-foreground/40', activeNote.deleted && 'opacity-60')}
                                 onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} onBlur={saveTitle}
+                                onPaste={e => {
+                                    e.preventDefault();
+                                    const text = e.clipboardData.getData('text/plain');
+                                    document.execCommand('insertText', false, text);
+                                }}
                             />
                         </div>
 
@@ -673,7 +678,7 @@ export default function NotesPage() {
                         {/* Footer with tags and color picker */}
                         <div className="px-4 py-2.5 border-t border-border shrink-0 flex flex-col gap-2">
                             <div className="flex flex-wrap items-center gap-1.5">
-                                {activeNote.tags.map(tag => (
+                                {(activeNote.tags || []).map(tag => (
                                     <span key={tag} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-mono animate-tag-pop">
                                         #{tag}
                                         {!activeNote.deleted && <button onClick={() => removeTag(tag)} className="hover:text-red-400 ml-0.5"><X size={9} /></button>}
