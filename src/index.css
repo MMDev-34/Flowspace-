@@ -1,0 +1,297 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: hsl(240 10% 3.9%);
+  --color-foreground: hsl(0 0% 98%);
+  --color-card: hsl(240 10% 3.9%);
+  --color-card-foreground: hsl(0 0% 98%);
+  --color-popover: hsl(240 10% 3.9%);
+  --color-popover-foreground: hsl(0 0% 98%);
+  --color-primary: hsl(184 100% 50%);
+  --color-primary-foreground: hsl(240 5.9% 10%);
+  --color-secondary: hsl(263 84% 58%);
+  --color-secondary-foreground: hsl(0 0% 98%);
+  --color-muted: hsl(240 3.7% 15.9%);
+  --color-muted-foreground: hsl(240 5% 64.9%);
+  --color-accent: hsl(240 3.7% 15.9%);
+  --color-accent-foreground: hsl(0 0% 98%);
+  --color-destructive: hsl(0 62.8% 50.6%);
+  --color-destructive-foreground: hsl(0 0% 98%);
+  --color-warning: hsl(38 92% 50%);
+  --color-warning-foreground: hsl(240 5.9% 10%);
+  --color-success: hsl(142 71% 45%);
+  --color-success-foreground: hsl(0 0% 98%);
+  --color-border: hsl(240 3.7% 15.9%);
+  --color-input: hsl(240 3.7% 15.9%);
+  --color-ring: hsl(184 100% 50%);
+  --color-section: hsl(240 3.7% 15.9%);
+  --color-subtle: hsl(240 5% 64.9%);
+  --color-hover: hsl(240 3.7% 15.9%);
+  --color-widget: hsl(240 10% 3.9%);
+  --radius: 0.5rem;
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: 'Inter', sans-serif;
+}
+
+.widget {
+  background-color: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.widget-title {
+  font-size: 0.75rem;
+  font-family: monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-muted-foreground);
+}
+
+.stat-val {
+  font-size: 1.875rem;
+  font-weight: 700;
+  font-family: monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.625rem;
+  font-family: monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border: 1px solid;
+}
+
+.chip-cyan {
+  background-color: hsl(184 100% 50% / 0.15);
+  color: var(--color-primary);
+  border-color: hsl(184 100% 50% / 0.3);
+}
+
+.chip-violet {
+  background-color: hsl(263 84% 58% / 0.15);
+  color: var(--color-secondary);
+  border-color: hsl(263 84% 58% / 0.3);
+}
+
+.chip-amber {
+  background-color: hsl(38 92% 50% / 0.15);
+  color: var(--color-warning);
+  border-color: hsl(38 92% 50% / 0.3);
+}
+
+.chip-red {
+  background-color: hsl(0 62.8% 50.6% / 0.15);
+  color: var(--color-destructive);
+  border-color: hsl(0 62.8% 50.6% / 0.3);
+}
+
+.chip-green {
+  background-color: hsl(142 71% 45% / 0.15);
+  color: var(--color-success);
+  border-color: hsl(142 71% 45% / 0.3);
+}
+
+.bg-gradient-brand {
+  background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+}
+
+.hover\:shadow-glow-cyan:hover {
+  box-shadow: 0 0 15px -3px hsl(184 100% 50% / 0.4);
+}
+
+.text-subtle {
+  color: var(--color-muted-foreground);
+}
+
+.bg-section {
+  background-color: var(--color-section);
+}
+
+.bg-widget {
+  background-color: var(--color-widget);
+}
+
+.bg-hover {
+  background-color: var(--color-hover);
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.15s ease-out;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Hide scrollbar but keep functionality */
+main::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+main {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* Hide scrollbar on all widgets */
+.widget::-webkit-scrollbar {
+  width: 2px;
+}
+
+.widget::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.widget::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 4px;
+}
+
+.widget {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+
+body::-webkit-scrollbar {
+  width: 0;
+}
+
+body {
+  scrollbar-width: none;
+}
+
+/* Prevent body scroll */
+body {
+  overflow: hidden;
+  scrollbar-width: none;
+}
+
+body::-webkit-scrollbar {
+  width: 0;
+}
+
+/* Main scrollbar hidden */
+main::-webkit-scrollbar {
+  width: 0;
+}
+
+main {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Light Theme */
+.light {
+  --background: 0 0% 100%;
+  --foreground: 0 0% 12%;
+  --card: 240 5% 96%;
+  --card-foreground: 0 0% 12%;
+  --border: 240 6% 90%;
+  --muted: 240 5% 56%;
+  --muted-foreground: 240 5% 56%;
+  --primary: 211 100% 50%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 280 68% 58%;
+  --secondary-foreground: 0 0% 100%;
+  --sidebar: 240 5% 94%;
+  --note-card: 0 0% 100%;
+  --note-border: 240 6% 90%;
+}
+
+/* Dark Theme (default) */
+.dark {
+  --background: 240 10% 4%;
+  --foreground: 240 10% 93%;
+  --card: 240 10% 8%;
+  --card-foreground: 240 10% 93%;
+  --border: 240 5% 14%;
+  --muted: 240 5% 45%;
+  --muted-foreground: 240 5% 45%;
+  --primary: 184 100% 50%;
+  --primary-foreground: 240 5% 10%;
+  --secondary: 263 84% 58%;
+  --secondary-foreground: 0 0% 98%;
+  --sidebar: 240 10% 6%;
+  --note-card: 240 10% 10%;
+  --note-border: 240 5% 16%;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   RESPONSIVE
+───────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .n-sidebar {
+    display: none;
+  }
+
+  .n-list {
+    width: 100%;
+    min-width: unset;
+  }
+
+  .n-editor {
+    display: none;
+  }
+
+  .n-list:has(~ .n-editor .n-editor-title:not(:empty)) .n-list {
+    display: none;
+  }
+}
+
+/* Shimmer Animation for pomodorodot widget */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes fall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(100vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+.animate-fall {
+  animation: fall linear forwards;
+}
