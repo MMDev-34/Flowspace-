@@ -78,11 +78,12 @@ export interface CalendarEvent {
 export interface Note {
   id: string;
   title: string;
-  body: string;        // HTML content (Lexical)
+  body: string;
   tags: string[];
   pinned: boolean;
   starred: boolean;
   deleted: boolean;
+  color?: string;
   wordCount: number;
   createdAt: string;
   updatedAt: string;

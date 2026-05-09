@@ -27,6 +27,10 @@ const EVENT_COLORS = [
   "#8b5cf6",
   "#ec4899",
 ];
+
+const formatDateStr = (d: Date) => {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONTHS = [
   "January",
@@ -116,16 +120,19 @@ export default function CalendarPage() {
 
   // ── Weather fetch ─────────────────────────────
   useEffect(() => {
+    const abortController = new AbortController();
     const fetchWeather = async () => {
       try {
         const geoRes = await fetch(
           `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(weatherCity)}&count=1`,
+          { signal: abortController.signal }
         );
         const geoData = await geoRes.json();
         if (!geoData.results?.length) return;
         const { latitude, longitude } = geoData.results[0];
         const weatherRes = await fetch(
           `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&hourly=relativehumidity_2m,windspeed_10m,uv_index&timezone=auto`,
+          { signal: abortController.signal }
         );
         const weatherData = await weatherRes.json();
         const cw = weatherData.current_weather;
@@ -143,11 +150,11 @@ export default function CalendarPage() {
 
         // Get current hour data
         const now = new Date();
-        const currentHourStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}T${String(now.getHours()).padStart(2, "0")}:00`;
-        const hourIdx =
-          weatherData.hourly?.time?.findIndex(
-            (t: string) => t === currentHourStr,
-          ) ?? 0;
+        const currentHourStr = `${formatDateStr(now)}T${String(now.getHours()).padStart(2, "0")}:00`;
+        const hourIdx = Math.max(
+          0,
+          weatherData.hourly?.time?.findIndex((t: string) => t === currentHourStr) ?? 0
+        );
 
         setWeather({
           temp: Math.round(cw.temperature),
@@ -157,13 +164,18 @@ export default function CalendarPage() {
           windSpeed: Math.round(cw.windspeed || 0),
           uvIndex: Math.round(weatherData.hourly?.uv_index?.[hourIdx] ?? 0),
         });
-      } catch {
-        setWeather(null);
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          setWeather(null);
+        }
       }
     };
     fetchWeather();
     const interval = setInterval(fetchWeather, 30 * 60 * 1000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      abortController.abort();
+    };
   }, [weatherCity]);
 
   const WeatherIcon = weather ? weatherIcons[weather.code] || Cloud : Cloud;
@@ -229,7 +241,8 @@ export default function CalendarPage() {
 
     for (let i = 1; i <= daysInMonth; i++) {
       const d = new Date(year, month, i);
-const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;      const dayEvents = calendarEvents.filter((e) => {
+      const dateStr = formatDateStr(d);
+      const dayEvents = calendarEvents.filter((e) => {
         if (!e.recurrence) return e.startDate === dateStr;
         const recurringEvents = generateRecurringEvents(e, e.recurrence);
         return (
@@ -244,37 +257,37 @@ const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}
       const allItems = [
         ...(activeFilters.includes("events")
           ? dayEvents
-              .filter((e) => e.category !== "reminder")
-              .map((e) => ({ ...e, type: "event" }))
+            .filter((e) => e.category !== "reminder")
+            .map((e) => ({ ...e, type: "event" }))
           : []),
-          
+
         ...(activeFilters.includes("reminders")
           ? dayEvents
-              .filter((e) => e.category === "reminder")
-              .map((e) => ({ ...e, type: "reminder" }))
+            .filter((e) => e.category === "reminder")
+            .map((e) => ({ ...e, type: "reminder" }))
           : []),
         ...(activeFilters.includes("tasks")
           ? dayTasks.map((t) => ({
-              id: t.id,
-              title: t.title,
-              startTime: t.due
-                ? new Date(t.due).toLocaleTimeString("en-US", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    hour12: false,
-                  })
-                : "",
-              color:
-                t.priority === "high"
-                  ? "#ef4444"
-                  : t.priority === "medium"
-                    ? "#f59e0b"
-                    : "#22c55e",
-              type: "task",
-              allDay: false,
-              reminder: false,
-              category: "task",
-            }))
+            id: t.id,
+            title: t.title,
+            startTime: t.due
+              ? new Date(t.due).toLocaleTimeString("en-US", {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false,
+              })
+              : "",
+            color:
+              t.priority === "high"
+                ? "#ef4444"
+                : t.priority === "medium"
+                  ? "#f59e0b"
+                  : "#22c55e",
+            type: "task",
+            allDay: false,
+            reminder: false,
+            category: "task",
+          }))
           : []),
       ];
       days.push({ date: d, isCurrentMonth: true, allItems });
@@ -294,13 +307,14 @@ const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}
     const startOfWeek = new Date(currentDate);
     startOfWeek.setDate(
       startOfWeek.getDate() -
-        (startOfWeek.getDay() === 0 ? 6 : startOfWeek.getDay() - 1),
+      (startOfWeek.getDay() === 0 ? 6 : startOfWeek.getDay() - 1),
     );
     const days: { date: Date; allItems: any[] }[] = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(startOfWeek);
       d.setDate(d.getDate() + i);
-const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;      const dayEvents = calendarEvents.filter((e) => e.startDate === dateStr);
+      const dateStr = formatDateStr(d);
+      const dayEvents = calendarEvents.filter((e) => e.startDate === dateStr);
       const dayTasks = tasks.filter(
         (t) => t.due && t.due.split("T")[0] === dateStr && t.status !== "done",
       );
@@ -309,34 +323,34 @@ const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}
         allItems: [
           ...(activeFilters.includes("events")
             ? dayEvents
-                .filter((ev) => ev.category !== "reminder")
-                .map((ev) => ({ ...ev, type: "event" }))
+              .filter((ev) => ev.category !== "reminder")
+              .map((ev) => ({ ...ev, type: "event" }))
             : []),
           ...(activeFilters.includes("reminders")
             ? dayEvents
-                .filter((ev) => ev.category === "reminder")
-                .map((ev) => ({ ...ev, type: "reminder" }))
+              .filter((ev) => ev.category === "reminder")
+              .map((ev) => ({ ...ev, type: "reminder" }))
             : []),
           ...(activeFilters.includes("tasks")
             ? dayTasks.map((t) => ({
-                id: t.id,
-                title: t.title,
-                startTime: t.due
-                  ? new Date(t.due).toLocaleTimeString("en-US", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      hour12: false,
-                    })
-                  : "",
-                color:
-                  t.priority === "high"
-                    ? "#ef4444"
-                    : t.priority === "medium"
-                      ? "#f59e0b"
-                      : "#3b82f6",
-                type: "task",
-                allDay: false,
-              }))
+              id: t.id,
+              title: t.title,
+              startTime: t.due
+                ? new Date(t.due).toLocaleTimeString("en-US", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: false,
+                })
+                : "",
+              color:
+                t.priority === "high"
+                  ? "#ef4444"
+                  : t.priority === "medium"
+                    ? "#f59e0b"
+                    : "#3b82f6",
+              type: "task",
+              allDay: false,
+            }))
             : []),
         ],
       });
@@ -344,7 +358,8 @@ const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}
     return days;
   }, [currentDate, calendarEvents, tasks, activeFilters]);
 
-const todayStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;  const todayEvents = useMemo(
+  const todayStr = formatDateStr(new Date());
+  const todayEvents = useMemo(
     () =>
       calendarEvents
         .filter((e) => e.startDate === todayStr)
@@ -352,7 +367,8 @@ const todayStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1
     [calendarEvents, todayStr],
   );
   const dayEvents = useMemo(() => {
-const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;    return calendarEvents
+    const ds = formatDateStr(currentDate);
+    return calendarEvents
       .filter((e) => e.startDate === ds)
       .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
   }, [currentDate, calendarEvents]);
@@ -490,7 +506,7 @@ const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).pa
         </button>
       </div>
 
-      
+
 
       {/* ── Calendar Main Area ── */}
       <div className="flex gap-4">
@@ -549,11 +565,11 @@ const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).pa
                     !day.isCurrentMonth && "opacity-25",
                     isToday(day.date) && "bg-primary/10 text-primary font-bold",
                     isSelected(day.date) &&
-                      !isToday(day.date) &&
-                      "bg-hover/50 text-foreground",
                     !isToday(day.date) &&
-                      !isSelected(day.date) &&
-                      "text-muted-foreground hover:bg-hover/30",
+                    "bg-hover/50 text-foreground",
+                    !isToday(day.date) &&
+                    !isSelected(day.date) &&
+                    "text-muted-foreground hover:bg-hover/30",
                   )}
                 >
                   <span className="relative">
@@ -565,8 +581,8 @@ const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).pa
                 </button>
               ))}
             </div>
-           
-                    </div>
+
+          </div>
 
           {/* ── Today's Schedule ── */}
           <div className="widget !p-3">
@@ -635,7 +651,7 @@ const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).pa
             ))}
           </div>
 
-                    {/* ── Weather Widget ── */}
+          {/* ── Weather Widget ── */}
           <div className="widget !p-3">
             <div className="flex items-center justify-between mb-2">
               <span className="text-[9px] font-mono uppercase text-muted-foreground">🌤️ Weather</span>
@@ -736,9 +752,9 @@ const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).pa
             {/* MONTH */}
             {view === "month" && (
               <div className="widget !p-2">
-                              <div className="grid grid-cols-8">
-                <div className="text-center text-[7px] font-mono text-muted-foreground py-2 border-b border-border/50">#</div>
-                {WEEKDAYS.map(d => <div key={d} className="text-center text-[9px] font-mono text-muted-foreground py-2 border-b border-border/50">{d}</div>)}
+                <div className="grid grid-cols-8">
+                  <div className="text-center text-[7px] font-mono text-muted-foreground py-2 border-b border-border/50">#</div>
+                  {WEEKDAYS.map(d => <div key={d} className="text-center text-[9px] font-mono text-muted-foreground py-2 border-b border-border/50">{d}</div>)}
                   {monthData.map((day, i) => (
                     <div
                       key={i}
@@ -758,7 +774,7 @@ const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).pa
                         className={cn(
                           "text-[10px] font-mono",
                           isToday(day.date) &&
-                            "bg-primary text-primary-foreground w-5 h-5 rounded-full flex items-center justify-center font-bold",
+                          "bg-primary text-primary-foreground w-5 h-5 rounded-full flex items-center justify-center font-bold",
                         )}
                       >
                         {day.date.getDate()}
@@ -776,13 +792,13 @@ const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).pa
                             onMouseEnter={(ev) => handleTooltip(ev, item)}
                             onMouseLeave={() => setTooltip(null)}
                           >
-                           {!item.allDay && (item.startTime ? <span>{item.startTime} </span> : <span>--:-- </span>)}
+                            {!item.allDay && (item.startTime ? <span>{item.startTime} </span> : <span>--:-- </span>)}
                             {item.title}
                             {item.type === "reminder" && " 🔔"}
                           </div>
                         ))}
                         {day.allItems.length > 2 && <div className="text-[10px] font-mono px-1" style={{ color: '#ffffff' }}>+{day.allItems.length - 2} more</div>}
-                        
+
                       </div>
                     </div>
                   ))}
@@ -792,7 +808,7 @@ const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).pa
 
             {/* DAY */}
             {view === 'day' && (
-            <div className="widget !p-3" ref={dayViewRef}>
+              <div className="widget !p-3" ref={dayViewRef}>
                 {dayEvents.filter((e) => e.allDay).length > 0 && (
                   <div className="mb-2 space-y-1">
                     {dayEvents
@@ -818,14 +834,14 @@ const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).pa
                 <div className="space-y-0">
                   {Array.from({ length: 17 }, (_, i) => i + 7).map((hour) => {
                     const timeLabel = `${String(hour).padStart(2, "0")}:00`;
-                   const hourEvents = dayEvents.filter(e => {
-                    if (e.allDay) return false;
-                    if (!e.startTime) return hour === 7; // Show untimed events at 7am slot
-                    return parseInt(e.startTime?.split(':')[0]||'0') === hour;
+                    const hourEvents = dayEvents.filter(e => {
+                      if (e.allDay) return false;
+                      if (!e.startTime) return hour === 7; // Show untimed events at 7am slot
+                      return parseInt(e.startTime?.split(':')[0] || '0') === hour;
                     });
                     const isNow = currentHour === hour && isToday(currentDate);
                     return (
-                    <div key={hour} className={cn('flex border-t border-border/30 min-h-[42px] relative hover:bg-primary/[0.02] transition-colors', isNow&&'bg-primary/[0.04]')}>
+                      <div key={hour} className={cn('flex border-t border-border/30 min-h-[42px] relative hover:bg-primary/[0.02] transition-colors', isNow && 'bg-primary/[0.04]')}>
                         <div className="w-14 text-[9px] font-mono text-muted-foreground pt-1 pr-3 text-right shrink-0">
                           {timeLabel}
                         </div>
@@ -892,13 +908,13 @@ const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).pa
                       className={cn(
                         "text-center text-[10px] font-mono py-2",
                         isToday(d.date) &&
-                          "text-primary font-bold bg-primary/5 rounded-t-lg",
+                        "text-primary font-bold bg-primary/5 rounded-t-lg",
                       )}
                     >
                       {WEEKDAYS[i]} {d.date.getDate()}
                     </div>
                   ))}
-                  {Array.from({ length: 14 }, (_, i) => i + 7).map((hour) => {
+                  {Array.from({ length: 17 }, (_, i) => i + 7).map((hour) => {
                     const tl = `${String(hour).padStart(2, "0")}:00`;
                     return (
                       <div key={hour} className="contents">
@@ -907,10 +923,10 @@ const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).pa
                         </div>
                         {weekData.map((d, i) => {
                           const hi = d.allItems.filter((item: any) => {
-  if (item.allDay) return false;
-  if (!item.startTime) return hour === 7;
-  return parseInt(item.startTime?.split(':')[0]||'0') === hour;
-});
+                            if (item.allDay) return false;
+                            if (!item.startTime) return hour === 7;
+                            return parseInt(item.startTime?.split(':')[0] || '0') === hour;
+                          });
                           return (
                             <div
                               key={i}
@@ -1015,7 +1031,7 @@ const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).pa
           className="fixed z-[200] bg-card border border-border rounded-xl p-3 shadow-2xl shadow-black/40 w-56 animate-fade-in pointer-events-none"
           style={{
             left: Math.min(tooltip.x, window.innerWidth - 240),
-            top: Math.max(tooltip.y, 10),
+            top: Math.min(Math.max(tooltip.y, 10), window.innerHeight - 150),
           }}
         >
           <div className="flex items-center gap-2 mb-1.5">
@@ -1044,10 +1060,10 @@ const ds = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).pa
           )}
           {(tooltip.event.category === "reminder" ||
             tooltip.event.type === "reminder") && (
-            <p className="text-[9px] text-amber-400 font-mono mt-1">
-              🔔 Reminder
-            </p>
-          )}
+              <p className="text-[9px] text-amber-400 font-mono mt-1">
+                🔔 Reminder
+              </p>
+            )}
           {tooltip.event.recurrence && (
             <p className="text-[9px] text-blue-400 font-mono mt-1">
               🔄 {tooltip.event.recurrence}
