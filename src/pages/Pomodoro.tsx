@@ -20,7 +20,7 @@ export default function PomodoroPage() {
   const {
     pomoFocusMin, pomoBreakMin, setPomoSettings,
     pomoHistory, pomoPhase, pomoSeconds,
-    pomoRunning, togglePomo, resetPomo, switchPomoPhase,
+    pomoRunning, togglePomo, resetPomo, switchPomoPhase, log
   } = useAppStore();
 
   const totalSeconds = (pomoPhase === "focus" ? pomoFocusMin : pomoBreakMin) * 60;
@@ -60,7 +60,6 @@ export default function PomodoroPage() {
     } else {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
-      setGlowScale(1);
     }
 
     return () => {
@@ -94,8 +93,17 @@ export default function PomodoroPage() {
   }, [pomoPhase]);
 
   // callbacks
-  const toggle = useCallback(() => togglePomo(), [togglePomo]);
-  const reset = useCallback(() => resetPomo(), [resetPomo]);
+  const toggle = useCallback(() => {
+    if (pomoRunning) {
+      setGlowScale(1);
+    }
+    togglePomo();
+  }, [togglePomo, pomoRunning]);
+
+  const reset = useCallback(() => {
+    setGlowScale(1);
+    resetPomo();
+  }, [resetPomo]);
   const switchToFocus = useCallback(() => switchPomoPhase("focus"), [switchPomoPhase]);
   const switchToBreak = useCallback(() => switchPomoPhase("break"), [switchPomoPhase]);
 
@@ -266,11 +274,11 @@ export default function PomodoroPage() {
             {/* Frosted Glass Lens & Text */}
             <div
               className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/5 shadow-[inset_0_0_20px_rgba(255,255,255,0.02),0_4px_20px_rgba(0,0,0,0.2)] backdrop-blur-md flex flex-col items-center justify-center transition-all duration-700"
-              style={{ 
-                width: 184, 
-                height: 184, 
-                zIndex: 20, 
-                background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.0) 100%)' 
+              style={{
+                width: 184,
+                height: 184,
+                zIndex: 20,
+                background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.0) 100%)'
               }}
             >
               <div className={cn(
@@ -278,8 +286,8 @@ export default function PomodoroPage() {
                 isFocus ? "text-primary" : "text-secondary",
               )}>
                 {mm}
-                <span className="text-3xl text-muted-foreground mx-0.5" 
-                      style={{ animation: pomoRunning ? "heartbeat 1s ease-in-out infinite" : "none" }}>:</span>
+                <span className="text-3xl text-muted-foreground mx-0.5"
+                  style={{ animation: pomoRunning ? "heartbeat 1s ease-in-out infinite" : "none" }}>:</span>
                 {ss}
               </div>
 
@@ -328,7 +336,11 @@ export default function PomodoroPage() {
               </label>
               <input
                 type="number" min={1} max={90} value={pomoFocusMin}
-                onChange={e => setPomoSettings(Math.max(1, +e.target.value || 1), pomoBreakMin)}
+                onChange={e => {
+                  const val = Math.max(1, +e.target.value || 1);
+                  setPomoSettings(val, pomoBreakMin);
+                  log('pomodoro', `Focus duration changed to ${val}m`, 'Pomodoro');
+                }}
                 className="w-full bg-section border border-border rounded-lg px-3 py-1.5 text-sm font-mono mt-1 focus:border-primary outline-none transition-colors"
               />
             </div>
@@ -338,7 +350,11 @@ export default function PomodoroPage() {
               </label>
               <input
                 type="number" min={1} max={30} value={pomoBreakMin}
-                onChange={e => setPomoSettings(pomoFocusMin, Math.max(1, +e.target.value || 1))}
+                onChange={e => {
+                  const val = Math.max(1, +e.target.value || 1);
+                  setPomoSettings(pomoFocusMin, val);
+                  log('pomodoro', `Break duration changed to ${val}m`, 'Pomodoro');
+                }}
                 className="w-full bg-section border border-border rounded-lg px-3 py-1.5 text-sm font-mono mt-1 focus:border-primary outline-none transition-colors"
               />
             </div>

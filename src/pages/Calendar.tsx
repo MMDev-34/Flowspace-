@@ -9,15 +9,15 @@ import {
   BellOff,
   Calendar as CalendarIcon,
   Trash2,
-  Pencil,
   Cloud,
   CloudRain,
   Sun,
   CloudSun,
   MapPin,
 } from "lucide-react";
+import { type LucideIcon } from "lucide-react";
 import { cn } from "../lib/utils";
-import { observances, historyEvents, getDayKey } from "../data/festivals";
+// import { observances, historyEvents, getDayKey } from "../data/festivals";
 
 const EVENT_COLORS = [
   "#ef4444",
@@ -51,7 +51,7 @@ type ViewType = "month" | "week" | "day" | "agenda";
 type CalendarFilter = "events" | "reminders" | "tasks";
 
 // ── Weather helper ─────────────────────────────
-const weatherIcons: Record<number, any> = {
+const weatherIcons: Record<number, LucideIcon> = {
   0: Sun,
   1: CloudSun,
   2: Cloud,
@@ -62,6 +62,20 @@ const weatherIcons: Record<number, any> = {
   61: CloudRain,
   80: CloudRain,
 };
+
+interface CalendarItem extends Partial<CalendarEvent> {
+  id: string;
+  title: string;
+  type: 'event' | 'reminder' | 'task';
+  startDate: string;
+  startTime?: string;
+  endTime?: string;
+  color: string;
+  allDay: boolean;
+  reminder: boolean;
+  category: 'event' | 'task' | 'reminder';
+  createdAt: string;
+}
 
 export default function CalendarPage() {
   const {
@@ -87,7 +101,7 @@ export default function CalendarPage() {
     "tasks",
   ]);
   const [tooltip, setTooltip] = useState<{
-    event: any;
+    event: CalendarItem;
     x: number;
     y: number;
   } | null>(null);
@@ -112,7 +126,7 @@ export default function CalendarPage() {
   const [eventColor, setEventColor] = useState("#ef4444");
   const [eventDesc, setEventDesc] = useState("");
   const [eventReminder, setEventReminder] = useState(true);
-  const [eventCategory, setEventCategory] = useState<"event" | "reminder">(
+  const [eventCategory, setEventCategory] = useState<"event" | "reminder" | "task">(
     "event",
   );
   const [eventRecurring, setEventRecurring] = useState<string>("none");
@@ -164,8 +178,8 @@ export default function CalendarPage() {
           windSpeed: Math.round(cw.windspeed || 0),
           uvIndex: Math.round(weatherData.hourly?.uv_index?.[hourIdx] ?? 0),
         });
-      } catch (err: any) {
-        if (err.name !== 'AbortError') {
+      } catch (err) {
+        if (err instanceof Error && err.name !== 'AbortError') {
           setWeather(null);
         }
       }
@@ -205,8 +219,8 @@ export default function CalendarPage() {
     );
 
   // ── Recurring event generator ─────────────────
-  const generateRecurringEvents = (base: any, recurrence: string) => {
-    const events = [];
+  const generateRecurringEvents = (base: CalendarEvent, recurrence: string) => {
+    const events: CalendarItem[] = [];
     const start = new Date(base.startDate);
     for (let i = 0; i < 12; i++) {
       const d = new Date(start);
@@ -217,6 +231,7 @@ export default function CalendarPage() {
         ...base,
         id: base.id + "_r" + i,
         startDate: d.toISOString().split("T")[0],
+        type: base.category === 'reminder' ? 'reminder' : 'event'
       });
     }
     return events;
@@ -230,7 +245,7 @@ export default function CalendarPage() {
     const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const daysInPrevMonth = new Date(year, month, 0).getDate();
-    const days: { date: Date; isCurrentMonth: boolean; allItems: any[] }[] = [];
+    const days: { date: Date; isCurrentMonth: boolean; allItems: CalendarItem[] }[] = [];
 
     for (let i = startDay - 1; i >= 0; i--)
       days.push({
@@ -254,17 +269,17 @@ export default function CalendarPage() {
         (t) => t.due && t.due.split("T")[0] === dateStr && t.status !== "done",
       );
 
-      const allItems = [
+      const allItems: CalendarItem[] = [
         ...(activeFilters.includes("events")
           ? dayEvents
             .filter((e) => e.category !== "reminder")
-            .map((e) => ({ ...e, type: "event" }))
+            .map((e) => ({ ...e, type: "event" as const }))
           : []),
 
         ...(activeFilters.includes("reminders")
           ? dayEvents
             .filter((e) => e.category === "reminder")
-            .map((e) => ({ ...e, type: "reminder" }))
+            .map((e) => ({ ...e, type: "reminder" as const }))
           : []),
         ...(activeFilters.includes("tasks")
           ? dayTasks.map((t) => ({
@@ -283,10 +298,12 @@ export default function CalendarPage() {
                 : t.priority === "medium"
                   ? "#f59e0b"
                   : "#22c55e",
-            type: "task",
+            type: "task" as const,
+            startDate: dateStr,
             allDay: false,
             reminder: false,
-            category: "task",
+            category: "task" as const,
+            createdAt: new Date().toISOString(),
           }))
           : []),
       ];
@@ -309,7 +326,7 @@ export default function CalendarPage() {
       startOfWeek.getDate() -
       (startOfWeek.getDay() === 0 ? 6 : startOfWeek.getDay() - 1),
     );
-    const days: { date: Date; allItems: any[] }[] = [];
+    const days: { date: Date; allItems: CalendarItem[] }[] = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(startOfWeek);
       d.setDate(d.getDate() + i);
@@ -324,12 +341,12 @@ export default function CalendarPage() {
           ...(activeFilters.includes("events")
             ? dayEvents
               .filter((ev) => ev.category !== "reminder")
-              .map((ev) => ({ ...ev, type: "event" }))
+              .map((ev) => ({ ...ev, type: "event" as const, category: "event" as const }))
             : []),
           ...(activeFilters.includes("reminders")
             ? dayEvents
               .filter((ev) => ev.category === "reminder")
-              .map((ev) => ({ ...ev, type: "reminder" }))
+              .map((ev) => ({ ...ev, type: "reminder" as const, category: "reminder" as const }))
             : []),
           ...(activeFilters.includes("tasks")
             ? dayTasks.map((t) => ({
@@ -348,8 +365,12 @@ export default function CalendarPage() {
                   : t.priority === "medium"
                     ? "#f59e0b"
                     : "#3b82f6",
-              type: "task",
+              type: "task" as const,
+              startDate: dateStr,
               allDay: false,
+              reminder: false,
+              category: "task" as const,
+              createdAt: new Date().toISOString(),
             }))
             : []),
         ],
@@ -359,23 +380,26 @@ export default function CalendarPage() {
   }, [currentDate, calendarEvents, tasks, activeFilters]);
 
   const todayStr = formatDateStr(new Date());
-  const todayEvents = useMemo(
+  const todayEvents = useMemo<CalendarItem[]>(
     () =>
       calendarEvents
         .filter((e) => e.startDate === todayStr)
+        .map(e => ({ ...e, type: (e.category as 'event' | 'reminder' | 'task') || 'event', category: (e.category as 'event' | 'reminder' | 'task') || 'event' }))
         .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || "")),
     [calendarEvents, todayStr],
   );
-  const dayEvents = useMemo(() => {
+  const dayEventsList = useMemo<CalendarItem[]>(() => {
     const ds = formatDateStr(currentDate);
     return calendarEvents
       .filter((e) => e.startDate === ds)
+      .map(e => ({ ...e, type: (e.category as 'event' | 'reminder' | 'task') || 'event', category: (e.category as 'event' | 'reminder' | 'task') || 'event' }))
       .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
   }, [currentDate, calendarEvents]);
-  const agendaEvents = useMemo(
+  const agendaEvents = useMemo<CalendarItem[]>(
     () =>
       [...calendarEvents]
         .filter((e) => e.startDate >= todayStr)
+        .map(e => ({ ...e, type: (e.category as 'event' | 'reminder' | 'task') || 'event', category: (e.category as 'event' | 'reminder' | 'task') || 'event' }))
         .sort(
           (a, b) =>
             a.startDate.localeCompare(b.startDate) ||
@@ -385,9 +409,9 @@ export default function CalendarPage() {
     [calendarEvents, todayStr],
   );
 
-  const dayKey = getDayKey(new Date());
-  const todayObservances = observances[dayKey] || [];
-  const todayHistory = historyEvents[dayKey] || [];
+  // const dayKey = getDayKey(new Date());
+  // const todayObservances = observances[dayKey] || [];
+  // const todayHistory = historyEvents[dayKey] || [];
 
   const isToday = (d: Date) => d.toDateString() === new Date().toDateString();
   const isSelected = (d: Date) =>
@@ -463,7 +487,7 @@ export default function CalendarPage() {
   const handleSaveEvent = (e: React.FormEvent) => {
     e.preventDefault();
     if (!eventTitle.trim() || !eventDate) return;
-    const data: any = {
+    const data: Partial<CalendarEvent> = {
       title: eventTitle.trim(),
       description: eventDesc.trim() || undefined,
       startDate: eventDate,
@@ -473,15 +497,15 @@ export default function CalendarPage() {
       allDay: eventAllDay,
       color: eventColor,
       reminder: eventReminder,
-      category: eventCategory,
-      recurrence: eventRecurring !== "none" ? eventRecurring : undefined,
+      category: eventCategory as "event" | "reminder" | "task",
+      recurrence: eventRecurring !== "none" ? (eventRecurring as "daily" | "weekly" | "monthly") : undefined,
     };
     if (editingEvent) updateCalendarEvent(editingEvent.id, data);
-    else addCalendarEvent(data);
+    else addCalendarEvent(data as Omit<CalendarEvent, 'id'>);
     setShowEventModal(false);
   };
 
-  const handleTooltip = (e: React.MouseEvent, item: any) => {
+  const handleTooltip = (e: React.MouseEvent, item: CalendarItem) => {
     setTooltip({ event: item, x: e.clientX + 12, y: e.clientY - 12 });
   };
 
@@ -780,7 +804,7 @@ export default function CalendarPage() {
                         {day.date.getDate()}
                       </span>
                       <div className="space-y-0.5 mt-1">
-                        {day.allItems.slice(0, 2).map((item: any) => (
+                        {day.allItems.slice(0, 2).map((item: CalendarItem) => (
                           <div
                             key={item.id}
                             className="text-[8px] truncate rounded px-1 py-0.5 font-mono"
@@ -809,9 +833,9 @@ export default function CalendarPage() {
             {/* DAY */}
             {view === 'day' && (
               <div className="widget !p-3" ref={dayViewRef}>
-                {dayEvents.filter((e) => e.allDay).length > 0 && (
+                {dayEventsList.filter((e) => e.allDay).length > 0 && (
                   <div className="mb-2 space-y-1">
-                    {dayEvents
+                    {dayEventsList
                       .filter((e) => e.allDay)
                       .map((e) => (
                         <div
@@ -834,7 +858,7 @@ export default function CalendarPage() {
                 <div className="space-y-0">
                   {Array.from({ length: 17 }, (_, i) => i + 7).map((hour) => {
                     const timeLabel = `${String(hour).padStart(2, "0")}:00`;
-                    const hourEvents = dayEvents.filter(e => {
+                    const hourEvents = dayEventsList.filter(e => {
                       if (e.allDay) return false;
                       if (!e.startTime) return hour === 7; // Show untimed events at 7am slot
                       return parseInt(e.startTime?.split(':')[0] || '0') === hour;
@@ -922,7 +946,7 @@ export default function CalendarPage() {
                           {tl}
                         </div>
                         {weekData.map((d, i) => {
-                          const hi = d.allItems.filter((item: any) => {
+                          const hi = d.allItems.filter((item: CalendarItem) => {
                             if (item.allDay) return false;
                             if (!item.startTime) return hour === 7;
                             return parseInt(item.startTime?.split(':')[0] || '0') === hour;
@@ -932,10 +956,10 @@ export default function CalendarPage() {
                               key={i}
                               className="border-t border-border/30 py-1 min-h-[36px]"
                             >
-                              {hi.map((item: any) => (
+                              {hi.map((item: CalendarItem) => (
                                 <div
                                   key={item.id}
-                                  onClick={() => openEditModal(item)}
+                                  onClick={() => openEditModal(item as unknown as CalendarEvent)}
                                   onMouseEnter={(ev) => handleTooltip(ev, item)}
                                   onMouseLeave={() => setTooltip(null)}
                                   className="text-[7px] rounded px-1 py-0.5 mb-0.5 cursor-pointer truncate font-mono"
@@ -1217,7 +1241,7 @@ export default function CalendarPage() {
               </label>
               <select
                 value={eventRecurring}
-                onChange={(e) => setEventRecurring(e.target.value as any)}
+                onChange={(e) => setEventRecurring(e.target.value)}
                 className="w-full bg-section border border-border rounded-lg px-3 py-2 text-sm font-mono focus:border-primary outline-none"
               >
                 <option value="none">Does not repeat</option>

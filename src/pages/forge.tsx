@@ -7,17 +7,46 @@ const ITEM_COLORS = ['#00d4ff', '#8b5cf6', '#22c55e', '#f59e0b', '#ef4444', '#ec
 const ITEM_ICONS = ['🏃', '🧘', '💧', '📖', '✍️', '🚫', '😴', '💪', '📚', '🎯', '💻', '🎵', '🏋️', '🥗', '🚶', '🧠'];
 
 // ── Confetti ──
+interface Particle {
+    id: number;
+    left: string;
+    width: string;
+    height: string;
+    color: string;
+    delay: string;
+    duration: string;
+    rotate: string;
+}
+
 const Confetti = memo(function Confetti() {
+    const [particles, setParticles] = useState<Particle[]>([]);
+
+    useEffect(() => {
+        const t = setTimeout(() => {
+            setParticles(Array.from({ length: 50 }).map((_, i) => ({
+                id: i,
+                left: `${Math.random() * 100}%`,
+                width: `${Math.random() * 8 + 4}px`,
+                height: `${Math.random() * 8 + 4}px`,
+                color: ['#00d4ff', '#8b5cf6', '#22c55e', '#f59e0b'][Math.floor(Math.random() * 4)],
+                delay: `${Math.random() * 0.5}s`,
+                duration: `${Math.random() * 2 + 2}s`,
+                rotate: `${Math.random() * 360}deg`,
+            })));
+        }, 100);
+        return () => clearTimeout(t);
+    }, []);
+
     return (
         <div className="fixed inset-0 pointer-events-none z-[300]">
-            {Array.from({ length: 50 }).map((_, i) => (
-                <div key={i} className="absolute animate-fall"
+            {particles.map((p) => (
+                <div key={p.id} className="absolute animate-fall"
                     style={{
-                        left: `${Math.random() * 100}%`, top: '-20px',
-                        width: `${Math.random() * 8 + 4}px`, height: `${Math.random() * 8 + 4}px`,
-                        background: ['#00d4ff', '#8b5cf6', '#22c55e', '#f59e0b'][Math.floor(Math.random() * 4)],
-                        borderRadius: '2px', animationDelay: `${Math.random() * 0.5}s`, animationDuration: `${Math.random() * 2 + 2}s`,
-                        transform: `rotate(${Math.random() * 360}deg)`,
+                        left: p.left, top: '-20px',
+                        width: p.width, height: p.height,
+                        background: p.color,
+                        borderRadius: '2px', animationDelay: p.delay, animationDuration: p.duration,
+                        transform: `rotate(${p.rotate})`,
                     }} />
             ))}
         </div>
@@ -62,9 +91,11 @@ const HeroCard = memo(function HeroCard({ todayPct, todayDone, todayTotal, weekD
     const [hoveredBar, setHoveredBar] = useState<number | null>(null);
 
     useEffect(() => {
-        setAnimated(false);
         const t = setTimeout(() => setAnimated(true), 50);
-        return () => clearTimeout(t);
+        return () => {
+            clearTimeout(t);
+            setAnimated(false);
+        };
     }, [triggerKey]);
 
     const weekAvg = Math.round(weekData.reduce((s, d) => s + d.pct, 0) / 7);
@@ -178,9 +209,18 @@ const TimelineChart = memo(function TimelineChart({ forgeItems }: { forgeItems: 
     const [animated, setAnimated] = useState(false);
     const [hoveredPoint, setHoveredPoint] = useState<number | null>(null);
     const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+    const [chartWidth, setChartWidth] = useState(800);
     const chartRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => { setAnimated(true); }, []);
+    useEffect(() => {
+        const t = setTimeout(() => {
+            setAnimated(true);
+            if (chartRef.current) {
+                setChartWidth(chartRef.current.clientWidth);
+            }
+        }, 100);
+        return () => clearTimeout(t);
+    }, []);
 
     const last30Days = useMemo(() => {
         const days: { date: string; pct: number; completed: number; total: number }[] = [];
@@ -196,25 +236,41 @@ const TimelineChart = memo(function TimelineChart({ forgeItems }: { forgeItems: 
     }, [forgeItems]);
 
     const prevDataRef = useRef(last30Days);
+    const width = 800; const height = 180;
+    const padding = { top: 25, right: 15, bottom: 30, left: 30 };
+    const chartW = width - padding.left - padding.right;
+    const chartH = height - padding.top - padding.bottom;
+
+    const points = useMemo(() => last30Days.map((d, i) => ({
+        x: padding.left + (i / (last30Days.length - 1)) * chartW,
+        y: padding.top + chartH - (d.pct / 100) * chartH, ...d,
+    })), [last30Days, chartW, chartH, padding.left, padding.top]);
+
+    const handleHover = useCallback((e: React.MouseEvent) => {
+        const svgRect = e.currentTarget.getBoundingClientRect();
+        const containerRect = chartRef.current?.getBoundingClientRect();
+        if (svgRect && containerRect) {
+            const internalWidth = 800; // SVG internal width
+            const svgX = ((e.clientX - svgRect.left) / svgRect.width) * internalWidth;
+            let closest = 0, minDist = Infinity;
+            points.forEach((p, i) => { const dist = Math.abs(p.x - svgX); if (dist < minDist) { minDist = dist; closest = i; } });
+            setHoveredPoint(closest);
+            setTooltipPos({ x: e.clientX - containerRect.left, y: e.clientY - containerRect.top });
+            setChartWidth(containerRect.width);
+        }
+    }, [points]);
+
     useEffect(() => {
         const prev = prevDataRef.current;
         if (prev.map(d => d.pct).join(',') !== last30Days.map(d => d.pct).join(',')) {
             setAnimated(false);
-            requestAnimationFrame(() => setAnimated(true));
+            const t = setTimeout(() => setAnimated(true), 0);
+            return () => clearTimeout(t);
         }
         prevDataRef.current = last30Days;
     }, [last30Days]);
 
     if (last30Days.length === 0) return null;
-
-    const width = 800; const height = 180;
-    const padding = { top: 25, right: 15, bottom: 30, left: 30 };
-    const chartW = width - padding.left - padding.right;
-    const chartH = height - padding.top - padding.bottom;
-    const points = last30Days.map((d, i) => ({
-        x: padding.left + (i / (last30Days.length - 1)) * chartW,
-        y: padding.top + chartH - (d.pct / 100) * chartH, ...d,
-    }));
     const smoothPath = points.map((p, i, arr) => {
         if (i === 0) return `M ${p.x} ${p.y}`;
         const prev = arr[i - 1];
@@ -228,18 +284,6 @@ const TimelineChart = memo(function TimelineChart({ forgeItems }: { forgeItems: 
     const streak = dailyItems.length > 0 ? Math.max(...dailyItems.map(i => i.streak)) : 0;
     const todayIdx = points.length - 1;
 
-    const handleHover = useCallback((e: React.MouseEvent) => {
-        const svgRect = e.currentTarget.getBoundingClientRect();
-        const containerRect = chartRef.current?.getBoundingClientRect();
-        if (svgRect && containerRect) {
-            const svgX = ((e.clientX - svgRect.left) / svgRect.width) * width;
-            let closest = 0, minDist = Infinity;
-            points.forEach((p, i) => { const dist = Math.abs(p.x - svgX); if (dist < minDist) { minDist = dist; closest = i; } });
-            setHoveredPoint(closest);
-            setTooltipPos({ x: e.clientX - containerRect.left, y: e.clientY - containerRect.top });
-        }
-    }, [points]);
-
     return (
         <div ref={chartRef} className="relative">
             <div className="flex items-center justify-between mb-2">
@@ -248,7 +292,7 @@ const TimelineChart = memo(function TimelineChart({ forgeItems }: { forgeItems: 
             </div>
             {hoveredPoint !== null && points[hoveredPoint] && (
                 <div className="absolute z-30 bg-card border border-cyan-400/30 rounded-xl px-3 py-2.5 shadow-2xl shadow-cyan-500/10 pointer-events-none min-w-[120px]"
-                    style={{ left: `${Math.max(60, Math.min(tooltipPos.x, (chartRef.current?.clientWidth || 800) - 60))}px`, top: `${Math.max(tooltipPos.y - 20, 0)}px`, transform: 'translate(-50%, -100%)' }}>
+                    style={{ left: `${Math.max(60, Math.min(tooltipPos.x, chartWidth - 60))}px`, top: `${Math.max(tooltipPos.y - 20, 0)}px`, transform: 'translate(-50%, -100%)' }}>
                     <div className="flex items-center gap-2 mb-1"><span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_6px_#00d4ff]" /><span className="text-[11px] font-semibold">{new Date(points[hoveredPoint].date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span></div>
                     <span className="text-xl font-bold font-mono text-cyan-400">{points[hoveredPoint].pct}%</span>
                     <span className="text-[9px] text-muted-foreground font-mono ml-1">done</span>
@@ -298,7 +342,16 @@ const MiniHeatmap = memo(function MiniHeatmap({ completions }: { completions: Re
 });
 
 // ── Habit Item ──
-const HabitItem = memo(function HabitItem({ item, done, onToggle, onEdit, onDelete, onDragStart, onDragEnter, onDragEnd }: any) {
+const HabitItem = memo(function HabitItem({ item, done, onToggle, onEdit, onDelete, onDragStart, onDragEnter, onDragEnd }: {
+    item: ForgeItem;
+    done: boolean;
+    onToggle: () => void;
+    onEdit: () => void;
+    onDelete: () => void;
+    onDragStart: () => void;
+    onDragEnter: () => void;
+    onDragEnd: () => void;
+}) {
     const [burst, setBurst] = useState<{ x: number; y: number } | null>(null);
     const itemRef = useRef<HTMLDivElement>(null);
 
@@ -336,7 +389,12 @@ const HabitItem = memo(function HabitItem({ item, done, onToggle, onEdit, onDele
 });
 
 // ── Goal Item ──
-const GoalItem = memo(function GoalItem({ item, onIncrement, onEdit, onDelete }: any) {
+const GoalItem = memo(function GoalItem({ item, onIncrement, onEdit, onDelete }: {
+    item: ForgeItem;
+    onIncrement: () => void;
+    onEdit: () => void;
+    onDelete: () => void;
+}) {
     const [floater, setFloater] = useState<{ x: number; y: number } | null>(null);
     const [barAnimated, setBarAnimated] = useState(false);
     const pct = item.targetCount ? Math.round(((item.currentCount || 0) / item.targetCount) * 100) : 0;
@@ -402,7 +460,16 @@ export default function ForgePage() {
         return days;
     })();
 
-    useEffect(() => { if (todayPct === 100 && todayTotal > 0 && !celebrating) { setCelebrating(true); setTimeout(() => setCelebrating(false), 4000); } }, [todayPct]);
+    useEffect(() => {
+        if (todayPct === 100 && todayTotal > 0 && !celebrating) {
+            const t = setTimeout(() => setCelebrating(true), 100);
+            const t2 = setTimeout(() => setCelebrating(false), 4100);
+            return () => {
+                clearTimeout(t);
+                clearTimeout(t2);
+            };
+        }
+    }, [todayPct, todayTotal, celebrating]);
 
     const [streakPopup, setStreakPopup] = useState<{ name: string; streak: number } | null>(null);
     const prevStreaks = useRef<Record<string, number>>({});
@@ -410,7 +477,20 @@ export default function ForgePage() {
 
     const openAddModal = () => { setEditingId(null); setItemName(''); setItemIcon('🏃'); setItemColor('#00d4ff'); setItemType('daily'); setItemTarget(10); setItemUnit('times'); setShowModal(true); };
     const openEditModal = (item: ForgeItem) => { setEditingId(item.id); setItemName(item.name); setItemIcon(item.icon); setItemColor(item.color); setItemType(item.type); setItemTarget(item.targetCount || 10); setItemUnit(item.unit || 'times'); setShowModal(true); };
-    const handleSave = () => { if (!itemName.trim()) return; const data: any = { name: itemName.trim(), icon: itemIcon, color: itemColor, type: itemType, targetCount: itemType === 'target' ? itemTarget : undefined, unit: itemType === 'target' ? itemUnit : undefined }; if (editingId) updateForgeItem(editingId, data); else addForgeItem(data); setShowModal(false); };
+    const handleSave = () => {
+        if (!itemName.trim()) return;
+        const data: Partial<ForgeItem> = {
+            name: itemName.trim(),
+            icon: itemIcon,
+            color: itemColor,
+            type: itemType,
+            targetCount: itemType === 'target' ? itemTarget : undefined,
+            unit: itemType === 'target' ? itemUnit : undefined
+        };
+        if (editingId) updateForgeItem(editingId, data);
+        else addForgeItem(data as Omit<ForgeItem, 'id' | 'streak' | 'bestStreak' | 'completions' | 'currentCount' | 'order' | 'createdAt' | 'updatedAt'>);
+        setShowModal(false);
+    };
 
     const dragItem = useRef<string | null>(null); const dragOverItem = useRef<string | null>(null);
     const handleDragStart = (id: string) => { dragItem.current = id; };

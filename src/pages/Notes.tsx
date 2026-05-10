@@ -7,7 +7,6 @@ import {
     Code, Quote, List, ListOrdered,
     Heading1, Heading2, Heading3, Link as LinkIcon,
     Undo2, Redo2, Clock, RotateCcw, AlertTriangle, FileText as NoteIcon,
-    Palette,
 } from 'lucide-react';
 
 // Lexical imports
@@ -27,7 +26,7 @@ import {
     $getRoot, $getSelection, $isRangeSelection,
     FORMAT_TEXT_COMMAND, UNDO_COMMAND, REDO_COMMAND,
     $createParagraphNode,
-    type EditorState, type LexicalEditor,
+    type EditorState, type LexicalCommand, type TextFormatType
 } from 'lexical';
 import { $setBlocksType } from '@lexical/selection';
 import { $createHeadingNode, HeadingNode, QuoteNode, $createQuoteNode } from '@lexical/rich-text';
@@ -72,6 +71,17 @@ const NOTE_COLORS = [
     '#6366f1', '#8b5cf6', '#00d4ff', '#22c55e', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6',
 ];
 
+// ── Types ──────────────────────────────────────────────────
+
+interface ToolbarState {
+    isBold: boolean;
+    isItalic: boolean;
+    isUnderline: boolean;
+    isStrikethrough: boolean;
+    isCode: boolean;
+    blockType: string;
+}
+
 // ── Helpers ──────────────────────────────────────────────────
 
 function stripHtml(html: string | undefined | null): string {
@@ -114,7 +124,7 @@ function highlightText(text: string | undefined | null, query: string) {
     if (!query.trim()) return text;
     const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
-    return parts.map((part, i) =>
+    return parts.map((part) =>
         part.toLowerCase() === query.toLowerCase()
             ? `<mark class="bg-yellow-400/30 text-yellow-200 rounded-sm">${part}</mark>`
             : part
@@ -123,7 +133,7 @@ function highlightText(text: string | undefined | null, query: string) {
 
 // ── Toolbar Plugin (unchanged) ────────────────────────────
 
-function ToolbarPlugin({ onStateChange }: { onStateChange: (s: any) => void }) {
+function ToolbarPlugin({ onStateChange }: { onStateChange: (s: ToolbarState) => void }) {
     const [editor] = useLexicalComposerContext();
     useEffect(() => {
         return editor.registerUpdateListener(({ editorState }) => {
@@ -133,8 +143,12 @@ function ToolbarPlugin({ onStateChange }: { onStateChange: (s: any) => void }) {
                 const anchor = sel.anchor.getNode();
                 const topEl = anchor.getKey() === 'root' ? anchor : anchor.getTopLevelElementOrThrow();
                 onStateChange({
-                    isBold: sel.hasFormat('bold'), isItalic: sel.hasFormat('italic'), isUnderline: sel.hasFormat('underline'),
-                    isStrikethrough: sel.hasFormat('strikethrough'), isCode: sel.hasFormat('code'), blockType: (topEl as any).getTag?.() ?? topEl.getType(),
+                    isBold: sel.hasFormat('bold'),
+                    isItalic: sel.hasFormat('italic'),
+                    isUnderline: sel.hasFormat('underline'),
+                    isStrikethrough: sel.hasFormat('strikethrough'),
+                    isCode: sel.hasFormat('code'),
+                    blockType: (topEl as unknown as { getTag?: () => string }).getTag?.() ?? topEl.getType(),
                 });
             });
         });
@@ -144,7 +158,16 @@ function ToolbarPlugin({ onStateChange }: { onStateChange: (s: any) => void }) {
 
 // ── Editor Core (handles content and focus) ────────────────
 
-function EditorCore({ note, onSave, saveTimerRef, setSaveStatus, toolbar, setToolbar }: any) {
+interface EditorCoreProps {
+    note: Note;
+    onSave: (html: string, wc: number) => void;
+    saveTimerRef: React.MutableRefObject<number | null>;
+    setSaveStatus: (s: 'saved' | 'unsaved' | 'saving') => void;
+    toolbar: ToolbarState;
+    setToolbar: (s: ToolbarState) => void;
+}
+
+function EditorCore({ note, onSave, saveTimerRef, setSaveStatus, toolbar, setToolbar }: EditorCoreProps) {
     const [editor] = useLexicalComposerContext();
 
     useEffect(() => {
@@ -166,7 +189,7 @@ function EditorCore({ note, onSave, saveTimerRef, setSaveStatus, toolbar, setToo
             }
         });
         editor.focus();
-    }, [editor, note.id]);
+    }, [editor, note.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleChange = useCallback((editorState: EditorState) => {
         setSaveStatus('unsaved');
@@ -228,7 +251,14 @@ function LexicalNoteEditor({ note, onSave, saveTimerRef, setSaveStatus }: {
     note: Note; onSave: (html: string, wc: number) => void;
     saveTimerRef: React.MutableRefObject<number | null>; setSaveStatus: (s: 'saved' | 'unsaved' | 'saving') => void;
 }) {
-    const [toolbar, setToolbar] = useState<any>({});
+    const [toolbar, setToolbar] = useState<ToolbarState>({
+        isBold: false,
+        isItalic: false,
+        isUnderline: false,
+        isStrikethrough: false,
+        isCode: false,
+        blockType: 'paragraph',
+    });
     const initialConfig = useMemo(() => ({
         namespace: 'FlowspaceNotes',
         nodes: EDITOR_NODES,
@@ -245,11 +275,11 @@ function LexicalNoteEditor({ note, onSave, saveTimerRef, setSaveStatus }: {
 
 // ── Toolbar Buttons (no require!) ──────────────────────────
 
-function FormatButton({ icon, title, format, active }: { icon: React.ReactNode; title: string; format: string; active: boolean }) {
+function FormatButton({ icon, title, format, active }: { icon: React.ReactNode; title: string; format: TextFormatType; active: boolean }) {
     const [editor] = useLexicalComposerContext();
-    return <button title={title} onMouseDown={e => e.preventDefault()} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, format as any)} className={cn('p-1.5 rounded-md transition-all', active ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-hover hover:text-foreground')}>{icon}</button>;
+    return <button title={title} onMouseDown={e => e.preventDefault()} onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, format)} className={cn('p-1.5 rounded-md transition-all', active ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-hover hover:text-foreground')}>{icon}</button>;
 }
-function EditorButton({ icon, title, cmd }: { icon: React.ReactNode; title: string; cmd: any }) {
+function EditorButton({ icon, title, cmd }: { icon: React.ReactNode; title: string; cmd: LexicalCommand<void> }) {
     const [editor] = useLexicalComposerContext();
     return <button title={title} onMouseDown={e => e.preventDefault()} onClick={() => editor.dispatchCommand(cmd, undefined)} className="p-1.5 rounded-md text-muted-foreground hover:bg-hover hover:text-foreground transition-all">{icon}</button>;
 }
@@ -263,7 +293,7 @@ function BlockButton({ icon, title, blockType, current }: { icon: React.ReactNod
                 if (active) {
                     $setBlocksType(sel, () => $createParagraphNode());
                 } else {
-                    $setBlocksType(sel, () => $createHeadingNode(blockType as 'h1' | 'h2' | 'h3') as any);
+                    $setBlocksType(sel, () => $createHeadingNode(blockType as 'h1' | 'h2' | 'h3'));
                 }
             }
         });
@@ -280,7 +310,7 @@ function QuoteButton({ icon, title, active }: { icon: React.ReactNode; title: st
         editor.update(() => {
             const sel = $getSelection();
             if ($isRangeSelection(sel)) {
-                $setBlocksType(sel, () => (active ? $createParagraphNode() : $createQuoteNode()) as any);
+                $setBlocksType(sel, () => (active ? $createParagraphNode() : $createQuoteNode()));
             }
         });
     };
@@ -296,7 +326,7 @@ function CodeBlockButton({ icon, title, active }: { icon: React.ReactNode; title
         editor.update(() => {
             const sel = $getSelection();
             if ($isRangeSelection(sel)) {
-                $setBlocksType(sel, () => (active ? $createParagraphNode() : $createCodeNode()) as any);
+                $setBlocksType(sel, () => (active ? $createParagraphNode() : $createCodeNode()));
             }
         });
     };
@@ -429,7 +459,7 @@ function EmptyState({ filter, query, onCreate }: { filter: string; query: string
 // ── Main Notes Page ────────────────────────────────────────
 
 export default function NotesPage() {
-    const { notes, addNote, updateNote, trashNote, restoreNote, permanentDeleteNote, themeMode, setThemeMode } = useAppStore();
+    const { notes, addNote, updateNote, trashNote, restoreNote, permanentDeleteNote, themeMode, log } = useAppStore();
     const [panelOpen, setPanelOpen] = useState(false);
     const [focusMode, setFocusMode] = useState(false);
     const [activeFilter, setActiveFilter] = useState<'all' | 'starred' | 'trash'>('all');
@@ -442,6 +472,9 @@ export default function NotesPage() {
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [bouncingId, setBouncingId] = useState<string | null>(null);
     const [noteColor, setNoteColor] = useState('#6366f1');
+    const wasModifiedRef = useRef(false);
+    const lastActiveNoteRef = useRef<Note | null>(null);
+    const isNewNoteCreationRef = useRef(false);
     const saveTimerRef = useRef<number | null>(null);
     const titleRef = useRef<HTMLDivElement>(null);
 
@@ -451,6 +484,42 @@ export default function NotesPage() {
     useEffect(() => { const t = setTimeout(() => setSearchQuery(rawSearch), SEARCH_DEBOUNCE); return () => clearTimeout(t); }, [rawSearch]);
 
     const activeNote = notes.find(n => n.id === activeNoteId) ?? null;
+
+    useEffect(() => {
+        // Log "content updated" if the previous note was modified before switching
+        if (lastActiveNoteRef.current && lastActiveNoteRef.current.id !== activeNoteId) {
+            const n = lastActiveNoteRef.current;
+
+            // If it was a new note that was never named, log its creation now
+            if (isNewNoteCreationRef.current) {
+                log('note', `Note created: "${n.title || 'Untitled'}"`, 'Notes');
+                isNewNoteCreationRef.current = false;
+            }
+
+            if (wasModifiedRef.current) {
+                log('note', `Note "${n.title || 'Untitled'}" content updated`, 'Notes');
+                wasModifiedRef.current = false;
+            }
+        }
+
+        // Update the ref to the current note
+        lastActiveNoteRef.current = activeNote;
+    }, [activeNoteId, activeNote, log]);
+
+    useEffect(() => {
+        return () => {
+            // Log when component unmounts if modified or new
+            if (lastActiveNoteRef.current) {
+                const n = lastActiveNoteRef.current;
+                if (isNewNoteCreationRef.current) {
+                    log('note', `Note created: "${n.title || 'Untitled'}"`, 'Notes');
+                }
+                if (wasModifiedRef.current) {
+                    log('note', `Note "${n.title || 'Untitled'}" content updated`, 'Notes');
+                }
+            }
+        };
+    }, [log]);
 
     const allTags = useMemo(() => {
         const s = new Set<string>();
@@ -505,15 +574,33 @@ export default function NotesPage() {
     const createNote = useCallback(() => {
         const id = genId();
         const now = new Date().toISOString();
-        const newNote = { id, title: 'Untitled', body: '', tags: [], pinned: false, starred: false, deleted: false, color: '#6366f1', wordCount: 0, createdAt: now, updatedAt: now } as any;
+        const newNote: Note = { id, title: 'Untitled', body: '', tags: [], pinned: false, starred: false, deleted: false, color: '#6366f1', wordCount: 0, createdAt: now, updatedAt: now };
         addNote(newNote);
+        isNewNoteCreationRef.current = true;
         setNewNoteId(id);
         setTimeout(() => setNewNoteId(null), 1000);
         openNote(newNote);
     }, [addNote, openNote]);
 
-    const saveTitle = useCallback(() => { if (!activeNoteId || !titleRef.current) return; updateNote(activeNoteId, { title: titleRef.current.innerText.trim() || 'Untitled' }); }, [activeNoteId, updateNote]);
-    const handleEditorSave = useCallback((html: string, wc: number) => { if (!activeNoteId) return; updateNote(activeNoteId, { body: html, wordCount: wc }); }, [activeNoteId, updateNote]);
+    const saveTitle = useCallback(() => {
+        if (!activeNoteId || !titleRef.current) return;
+        const newTitle = titleRef.current.innerText.trim() || 'Untitled';
+        const currentNote = notes.find(n => n.id === activeNoteId);
+        if (currentNote && currentNote.title !== newTitle) {
+            updateNote(activeNoteId, { title: newTitle });
+            if (isNewNoteCreationRef.current) {
+                log('note', `Note created: "${newTitle}"`, 'Notes');
+                isNewNoteCreationRef.current = false;
+            } else {
+                log('note', `Note renamed to "${newTitle}"`, 'Notes');
+            }
+        }
+    }, [activeNoteId, updateNote, notes, log]);
+    const handleEditorSave = useCallback((html: string, wc: number) => {
+        if (!activeNoteId) return;
+        updateNote(activeNoteId, { body: html, wordCount: wc });
+        wasModifiedRef.current = true;
+    }, [activeNoteId, updateNote]);
 
     const handleTrash = useCallback((id: string) => {
         setDeletingId(id);

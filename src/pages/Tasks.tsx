@@ -13,6 +13,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Plus, Check, Trash2, X, Clock, AlertTriangle,
   Flame, Calendar as CalendarIcon, Tag, ChevronRight, Inbox, ListChecks,
+  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
@@ -22,7 +23,7 @@ import { Button } from '../components/ui/button';
 
 type View = 'today' | 'upcoming' | 'overdue' | 'completed' | 'all';
 
-const VIEWS: { id: View; label: string; icon: any }[] = [
+const VIEWS: { id: View; label: string; icon: LucideIcon }[] = [
   { id: 'today', label: 'Today', icon: CalendarIcon },
   { id: 'upcoming', label: 'Upcoming', icon: ChevronRight },
   { id: 'overdue', label: 'Overdue', icon: AlertTriangle },
@@ -107,6 +108,7 @@ export default function TasksPage() {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) return;
       if (e.key === 'n' && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
+        setDraft(emptyDraft());
         setShowAdd(true);
       }
       if (e.key === 'Escape') {
@@ -120,7 +122,6 @@ export default function TasksPage() {
 
   useEffect(() => {
     if (showAdd) {
-      setDraft(emptyDraft());
       setTimeout(() => titleRef.current?.focus(), 50);
     }
   }, [showAdd]);
@@ -241,7 +242,10 @@ export default function TasksPage() {
             className="bg-section border border-border rounded-lg px-3 py-1.5 text-xs focus:border-primary outline-none w-44"
           />
           <button
-            onClick={() => setShowAdd(true)}
+            onClick={() => {
+              setDraft(emptyDraft());
+              setShowAdd(true);
+            }}
             className="bg-primary text-primary-foreground px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 hover:shadow-glow-cyan transition-all"
           >
             <Plus className="w-3.5 h-3.5" /> Add Task
@@ -341,12 +345,12 @@ export default function TasksPage() {
             const eff = effectivePriority(t);
             const accent =
               t.status === 'done' ? 'border-l-success' :
-              overdue ? 'border-l-destructive' :
-              atRisk ? 'border-l-warning' :
-              t.status === 'in_progress' ? 'border-l-primary' :
-              eff === 'high' ? 'border-l-destructive' :
-              eff === 'medium' ? 'border-l-warning' :
-              'border-l-border';
+                overdue ? 'border-l-destructive' :
+                  atRisk ? 'border-l-warning' :
+                    t.status === 'in_progress' ? 'border-l-primary' :
+                      eff === 'high' ? 'border-l-destructive' :
+                        eff === 'medium' ? 'border-l-warning' :
+                          'border-l-border';
             return (
               <div
                 key={t.id}
@@ -571,8 +575,8 @@ export default function TasksPage() {
                       'px-2 py-1.5 rounded-md text-xs font-mono uppercase tracking-wider border transition-colors',
                       draft.priority === p
                         ? p === 'high' ? 'bg-destructive/15 text-destructive border-destructive/40'
-                        : p === 'medium' ? 'bg-warning/15 text-warning border-warning/40'
-                        : 'bg-primary/15 text-primary border-primary/40'
+                          : p === 'medium' ? 'bg-warning/15 text-warning border-warning/40'
+                            : 'bg-primary/15 text-primary border-primary/40'
                         : 'border-border text-muted-foreground hover:border-primary/30'
                     )}
                   >
@@ -774,7 +778,7 @@ function DetailPanel({
                 className={cn(
                   'px-2 py-0.5 text-[10px] rounded-full font-mono border transition-colors',
                   on ? 'bg-primary/15 text-primary border-primary/40'
-                     : 'border-border text-muted-foreground hover:border-primary/30'
+                    : 'border-border text-muted-foreground hover:border-primary/30'
                 )}
               >
                 #{tag}

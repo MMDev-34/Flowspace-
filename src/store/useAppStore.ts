@@ -19,7 +19,7 @@ export interface Task {
   tags: string[];
 }
 
-export type LogType = 'info' | 'task' | 'pomodoro' | 'system' | 'warn' | 'error';
+export type LogType = 'info' | 'task' | 'pomodoro' | 'system' | 'warn' | 'error' | 'note' | 'calendar' | 'forge' | 'link';
 
 export interface LogEntry {
   id: string;
@@ -140,6 +140,7 @@ interface AppState {
   pomoSession: number;
   weatherCity: string;
   themeMode: 'light' | 'dark';
+  logRetentionDays: number; // 0 means never delete
 
   // ── Task actions ──────────────────────────────────────────────────────────
   addTask: (task: Omit<Task, 'id' | 'status' | 'completedAt'>) => void;
@@ -192,6 +193,8 @@ interface AppState {
   // ── Settings actions ──────────────────────────────────────────────────────
   setThemeMode: (mode: 'light' | 'dark') => void;
   setWeatherCity: (city: string) => void;
+  setLogRetentionDays: (days: number) => void;
+  cleanupLogs: () => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -304,6 +307,7 @@ export const useAppStore = create<AppState>()(
       pomoSession: 1,
       weatherCity: 'Bangalore',
       themeMode: 'dark',
+      logRetentionDays: 30, // Default 30 days
 
       // Quick Access
       quickCategories: [
@@ -361,6 +365,8 @@ export const useAppStore = create<AppState>()(
         get().log('task', `Task "${task.title}" added`, 'Task');
       },
       updateTask: (id, patch) => {
+        const task = get().tasks.find((t) => t.id === id);
+        if (task) get().log('task', `Task "${task.title}" updated`, 'Task');
         set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) }));
       },
       setTaskStatus: (id, status) => {
@@ -384,15 +390,35 @@ export const useAppStore = create<AppState>()(
       // ── Log actions ───────────────────────────────────────────────────────
       log: (type, msg, category) => {
         set((s) => ({ logs: [...s.logs, { id: generateId(), timestamp: new Date().toISOString(), type, category, msg }] }));
+        // Auto-cleanup check occasionally (e.g. 1 in 5 logs) to keep it lightweight
+        if (Math.random() < 0.2) {
+          get().cleanupLogs();
+        }
       },
       clearLogs: () => set({ logs: [] }),
+      setLogRetentionDays: (days) => set({ logRetentionDays: days }),
+      cleanupLogs: () => {
+        const state = get();
+        if (!state) return;
+        const days = state.logRetentionDays ?? 30;
+        if (days <= 0) return;
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - days);
+        const filtered = state.logs.filter(l => new Date(l.timestamp) >= cutoff);
+        if (filtered.length !== state.logs.length) {
+          set({ logs: filtered });
+        }
+      },
 
       // ── Quick Access ──────────────────────────────────────────────────────
       addQuickCategory: (name, icon) => {
         const cat: QuickCategory = { id: generateId(), name, icon, order: get().quickCategories.length, createdAt: new Date().toISOString() };
         set((s) => ({ quickCategories: [...s.quickCategories, cat] }));
+        get().log('link', `Category "${name}" added`, 'Quick Access');
       },
       deleteQuickCategory: (id) => {
+        const cat = get().quickCategories.find(c => c.id === id);
+        if (cat) get().log('link', `Category "${cat.name}" removed`, 'Quick Access');
         set((s) => ({ quickCategories: s.quickCategories.filter((c) => c.id !== id), quickLinks: s.quickLinks.filter((l) => l.categoryId !== id) }));
       },
       addQuickLink: (categoryId, name, url, icon) => {
@@ -400,31 +426,66 @@ export const useAppStore = create<AppState>()(
         if (catLinks.length >= 10) return;
         const link: QuickLink = { id: generateId(), categoryId, name, url: url.startsWith('http') ? url : `https://${url}`, icon, order: catLinks.length, createdAt: new Date().toISOString(), clickCount: 0 };
         set((s) => ({ quickLinks: [...s.quickLinks, link] }));
+        get().log('link', `Link "${name}" added`, 'Quick Access');
       },
-      deleteQuickLink: (id) => set((s) => ({ quickLinks: s.quickLinks.filter((l) => l.id !== id) })),
+      deleteQuickLink: (id) => {
+        const link = get().quickLinks.find(l => l.id === id);
+        if (link) get().log('link', `Link "${link.name}" removed`, 'Quick Access');
+        set((s) => ({ quickLinks: s.quickLinks.filter((l) => l.id !== id) }));
+      },
       reorderLinks: (categoryId, orderedIds) => {
         set((s) => ({ quickLinks: s.quickLinks.map((l) => (l.categoryId === categoryId ? { ...l, order: orderedIds.indexOf(l.id) } : l)) }));
       },
-      updateQuickLink: (id, patch) => set((s) => ({ quickLinks: s.quickLinks.map((l) => (l.id === id ? { ...l, ...patch } : l)) })),
-      incrementClickCount: (id) => set((s) => ({ quickLinks: s.quickLinks.map((l) => (l.id === id ? { ...l, clickCount: l.clickCount + 1 } : l)) })),
+      updateQuickLink: (id, patch) => {
+        const link = get().quickLinks.find((l) => l.id === id);
+        if (link) get().log('link', `Link "${link.name}" updated`, 'Quick Access');
+        set((s) => ({ quickLinks: s.quickLinks.map((l) => (l.id === id ? { ...l, ...patch } : l)) }));
+      },
+      incrementClickCount: (id) => {
+        const link = get().quickLinks.find((l) => l.id === id);
+        if (link) get().log('link', `Link clicked: "${link.name}"`, 'Quick Access');
+        set((s) => ({ quickLinks: s.quickLinks.map((l) => (l.id === id ? { ...l, clickCount: l.clickCount + 1 } : l)) }));
+      },
 
-      // ── Calendar ──────────────────────────────────────────────────────────
       addCalendarEvent: (event) => {
         const ev: CalendarEvent = { ...event, id: generateId(), createdAt: new Date().toISOString() };
         set((s) => ({ calendarEvents: [...s.calendarEvents, ev] }));
+        get().log('calendar', `Event "${ev.title}" added`, 'Calendar');
       },
-      updateCalendarEvent: (id, patch) => set((s) => ({ calendarEvents: s.calendarEvents.map((e) => (e.id === id ? { ...e, ...patch } : e)) })),
-      deleteCalendarEvent: (id) => set((s) => ({ calendarEvents: s.calendarEvents.filter((e) => e.id !== id) })),
+      updateCalendarEvent: (id, patch) => {
+        const ev = get().calendarEvents.find(e => e.id === id);
+        if (ev) get().log('calendar', `Event "${ev.title}" updated`, 'Calendar');
+        set((s) => ({ calendarEvents: s.calendarEvents.map((e) => (e.id === id ? { ...e, ...patch } : e)) }));
+      },
+      deleteCalendarEvent: (id) => {
+        const ev = get().calendarEvents.find(e => e.id === id);
+        if (ev) get().log('calendar', `Event "${ev.title}" removed`, 'Calendar');
+        set((s) => ({ calendarEvents: s.calendarEvents.filter((e) => e.id !== id) }));
+      },
 
       // ── Notes ─────────────────────────────────────────────────────────────
       addNote: (note) => {
         const n: Note = { createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...note };
         set((s) => ({ notes: [n, ...s.notes] }));
       },
-      updateNote: (id, patch) => set((s) => ({ notes: s.notes.map((n) => (n.id === id ? { ...n, ...patch, updatedAt: new Date().toISOString() } : n)) })),
-      trashNote: (id) => set((s) => ({ notes: s.notes.map((n) => (n.id === id ? { ...n, deleted: true, updatedAt: new Date().toISOString() } : n)) })),
-      restoreNote: (id) => set((s) => ({ notes: s.notes.map((n) => (n.id === id ? { ...n, deleted: false, updatedAt: new Date().toISOString() } : n)) })),
-      permanentDeleteNote: (id) => set((s) => ({ notes: s.notes.filter((n) => n.id !== id) })),
+      updateNote: (id, patch) => {
+        set((s) => ({ notes: s.notes.map((n) => (n.id === id ? { ...n, ...patch, updatedAt: new Date().toISOString() } : n)) }));
+      },
+      trashNote: (id) => {
+        const n = get().notes.find(nn => nn.id === id);
+        if (n) get().log('note', `Note "${n.title || 'Untitled'}" moved to trash`, 'Notes');
+        set((s) => ({ notes: s.notes.map((n) => (n.id === id ? { ...n, deleted: true, updatedAt: new Date().toISOString() } : n)) }));
+      },
+      restoreNote: (id) => {
+        const n = get().notes.find(nn => nn.id === id);
+        if (n) get().log('note', `Note "${n.title || 'Untitled'}" restored`, 'Notes');
+        set((s) => ({ notes: s.notes.map((n) => (n.id === id ? { ...n, deleted: false, updatedAt: new Date().toISOString() } : n)) }));
+      },
+      permanentDeleteNote: (id) => {
+        const n = get().notes.find(nn => nn.id === id);
+        if (n) get().log('note', `Note "${n.title || 'Untitled'}" permanently deleted`, 'Notes');
+        set((s) => ({ notes: s.notes.filter((n) => n.id !== id) }));
+      },
       addNoteFolder: (folder) => {
         const f: NoteFolder = { ...folder, id: generateId(), order: get().noteFolders.length };
         set((s) => ({ noteFolders: [...s.noteFolders, f] }));
@@ -435,25 +496,45 @@ export const useAppStore = create<AppState>()(
       addForgeItem: (item) => {
         const fi: ForgeItem = { ...item, id: generateId(), streak: 0, bestStreak: 0, completions: {}, currentCount: 0, order: get().forgeItems.length, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
         set((s) => ({ forgeItems: [...s.forgeItems, fi] }));
+        get().log('forge', `Habit "${fi.name}" forged`, 'Forge');
       },
-      updateForgeItem: (id, patch) => set((s) => ({ forgeItems: s.forgeItems.map((i) => (i.id === id ? { ...i, ...patch, updatedAt: new Date().toISOString() } : i)) })),
-      deleteForgeItem: (id) => set((s) => ({ forgeItems: s.forgeItems.filter((i) => i.id !== id) })),
+      updateForgeItem: (id, patch) => {
+        const fi = get().forgeItems.find(i => i.id === id);
+        if (fi) get().log('forge', `Habit "${fi.name}" updated`, 'Forge');
+        set((s) => ({ forgeItems: s.forgeItems.map((i) => (i.id === id ? { ...i, ...patch, updatedAt: new Date().toISOString() } : i)) }));
+      },
+      deleteForgeItem: (id) => {
+        const fi = get().forgeItems.find(i => i.id === id);
+        if (fi) get().log('forge', `Habit "${fi.name}" removed`, 'Forge');
+        set((s) => ({ forgeItems: s.forgeItems.filter((i) => i.id !== id) }));
+      },
       toggleForgeItem: (id) => {
         const today = new Date().toISOString().split('T')[0];
+        const item = get().forgeItems.find(i => i.id === id);
+        if (!item) return;
+        const done = item.completions[today];
+        get().log('forge', `Habit "${item.name}" ${done ? 'unchecked' : 'completed'}`, 'Forge');
         set((s) => ({
           forgeItems: s.forgeItems.map((i) => {
             if (i.id !== id) return i;
-            const done = i.completions[today];
             const next = { ...i.completions };
-            done ? delete next[today] : (next[today] = true);
-            const newStreak = done ? 0 : i.streak + 1;
+            if (done) {
+              delete next[today];
+            } else {
+              next[today] = true;
+            }
+            const newStreak = done ? Math.max(0, i.streak - 1) : i.streak + 1;
             return { ...i, completions: next, streak: newStreak, bestStreak: Math.max(i.bestStreak, newStreak), updatedAt: new Date().toISOString() };
           }),
         }));
       },
-      incrementTarget: (id) => set((s) => ({
-        forgeItems: s.forgeItems.map((i) => (i.id === id && i.type === 'target' ? { ...i, currentCount: Math.min((i.currentCount ?? 0) + 1, i.targetCount ?? 1), updatedAt: new Date().toISOString() } : i)),
-      })),
+      incrementTarget: (id) => {
+        const item = get().forgeItems.find(i => i.id === id);
+        if (item) get().log('forge', `Goal progress: "${item.name}" (+1)`, 'Forge');
+        set((s) => ({
+          forgeItems: s.forgeItems.map((i) => (i.id === id && i.type === 'target' ? { ...i, currentCount: Math.min((i.currentCount ?? 0) + 1, i.targetCount ?? 1), updatedAt: new Date().toISOString() } : i)),
+        }));
+      },
       reorderForgeItems: (orderedIds) => set((s) => ({
         forgeItems: s.forgeItems.map((i) => ({ ...i, order: orderedIds.indexOf(i.id) })),
       })),
@@ -470,14 +551,23 @@ export const useAppStore = create<AppState>()(
       },
       togglePomo: () => {
         const s = get();
-        if (s.pomoRunning) { stopTimer(); set({ pomoRunning: false }); }
+        if (s.pomoRunning) {
+          stopTimer();
+          set({ pomoRunning: false });
+          get().log('pomodoro', `Pomodoro paused`, 'Pomodoro');
+        }
         else {
           if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
           set({ pomoRunning: true });
           startTimer(set, get);
+          get().log('pomodoro', `Pomodoro started`, 'Pomodoro');
         }
       },
-      resetPomo: () => { stopTimer(); set({ pomoPhase: 'focus', pomoSeconds: get().pomoFocusMin * 60, pomoRunning: false, pomoSession: 1 }); },
+      resetPomo: () => {
+        stopTimer();
+        set({ pomoPhase: 'focus', pomoSeconds: get().pomoFocusMin * 60, pomoRunning: false, pomoSession: 1 });
+        get().log('pomodoro', `Pomodoro reset`, 'Pomodoro');
+      },
       switchPomoPhase: (phase) => { stopTimer(); set({ pomoPhase: phase, pomoSeconds: (phase === 'focus' ? get().pomoFocusMin : get().pomoBreakMin) * 60, pomoRunning: false }); },
 
       // ── Settings ──────────────────────────────────────────────────────────
@@ -487,34 +577,52 @@ export const useAppStore = create<AppState>()(
 
     {
       name: 'productivity-dashboard-storage',
-      onRehydrateStorage: (state) => {
-        if (!state) return;
+      onRehydrateStorage: () => (state, error) => {
+        if (error || !state) return;
+
+        // Ensure new properties exist
+        if (state.logRetentionDays === undefined) {
+          useAppStore.setState({ logRetentionDays: 30 });
+        }
 
         // Migrate old notes to new schema
-        state.notes = (state.notes ?? []).map((n: any) => ({
+        const migratedNotes = (state.notes ?? []).map((n) => ({
           ...n,
-          body: n.body ?? n.content ?? '',
+          body: n.body ?? (n as unknown as { content: string }).content ?? '',
           tags: Array.isArray(n.tags) ? n.tags : [],
           starred: n.starred ?? false,
           deleted: n.deleted ?? false,
           wordCount: n.wordCount ?? 0,
         }));
 
+        if (JSON.stringify(migratedNotes) !== JSON.stringify(state.notes)) {
+          useAppStore.setState({ notes: migratedNotes });
+        }
+
         // Inject dummy completions for Forge if missing
-        if (state.forgeItems?.length > 0) {
-          const totalCompletions = state.forgeItems.reduce((acc: number, item: any) => acc + Object.keys(item.completions ?? {}).length, 0);
+        if (state.forgeItems && state.forgeItems.length > 0) {
+          const totalCompletions = state.forgeItems.reduce((acc: number, item) => acc + Object.keys(item.completions ?? {}).length, 0);
           if (totalCompletions === 0) {
-            state.forgeItems = state.forgeItems.map((item: any) => {
+            const newForgeItems = state.forgeItems.map((item) => {
               if (item.type === 'daily') return { ...item, completions: generateDummyCompletions(0.5) };
               return item;
             });
+            useAppStore.setState({ forgeItems: newForgeItems });
           }
         }
 
         // Resume Pomodoro if was running
         if (state.pomoRunning) {
-          startTimer(useAppStore.setState, useAppStore.getState);
+          setTimeout(() => {
+            startTimer(useAppStore.setState, useAppStore.getState);
+          }, 0);
         }
+
+        // Run cleanup
+        setTimeout(() => {
+          const s = useAppStore.getState();
+          if (s.cleanupLogs) s.cleanupLogs();
+        }, 100);
       },
     },
   ),

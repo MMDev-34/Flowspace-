@@ -11,6 +11,7 @@ const links = [
   { to: '/calendar', icon: Calendar, label: 'Calendar' },
   { to: '/notes', icon: FileText, label: 'Notes' },
   { to: '/forge', icon: Flame, label: 'Forge' },
+  { icon: '📈', label: 'Insights', path: '/insights' }
 ];
 
 export default function Layout() {

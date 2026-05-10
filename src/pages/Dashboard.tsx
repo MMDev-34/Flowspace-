@@ -1,5 +1,6 @@
-import { useAppStore } from "../store/useAppStore";
-import { useEffect, useMemo, useState, useRef, memo } from "react";
+import { useAppStore, type CalendarEvent, type ForgeItem, type QuickLink } from "../store/useAppStore";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { cn } from "../lib/utils";
 import {
   LineChart,
   Line,
@@ -17,7 +18,6 @@ import {
   Flame,
   Smile,
   CheckCircle2,
-  Clock,
   Check,
 } from "lucide-react";
 
@@ -88,9 +88,8 @@ function LivePomodoroDots() {
   // Entrance animation: fill dots one by one from 0 to actual
   useEffect(() => {
     mountedRef.current = true;
-    setFilledDots(0);
-    setDisplayPct(0);
 
+    // We use a local variable to keep track during the animation
     let dot = 0;
     const interval = setInterval(() => {
       dot++;
@@ -107,8 +106,9 @@ function LivePomodoroDots() {
 
     return () => {
       clearInterval(interval);
+      mountedRef.current = false;
     };
-  }, []);
+  }, [actualFilledDots]);
 
   // Smooth updates after entrance
   useEffect(() => {
@@ -234,7 +234,6 @@ function ArcRacerGauge({
   useEffect(() => {
     // Reset on mount (refresh)
     mountedRef.current = true;
-    setDisplayPct(0);
 
     const t1 = setTimeout(() => {
       if (mountedRef.current) setDisplayPct(98);
@@ -250,8 +249,9 @@ function ArcRacerGauge({
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
+      mountedRef.current = false;
     };
-  }, []);
+  }, [actualPct]);
 
   // Smooth updates after entrance animation is done
   useEffect(() => {
@@ -263,20 +263,6 @@ function ArcRacerGauge({
   const CX = 100,
     CY = 100,
     R = 72;
-
-  const arcPath = (percent: number) => {
-    if (percent <= 0) return "";
-    const p = Math.min(percent, 99.99);
-    const toRad = (deg: number) => (deg * Math.PI) / 180;
-    const startAngle = 180;
-    const endAngle = 180 - (p / 100) * 180;
-    const x1 = CX + R * Math.cos(toRad(startAngle));
-    const y1 = CY - R * Math.sin(toRad(startAngle));
-    const x2 = CX + R * Math.cos(toRad(endAngle));
-    const y2 = CY - R * Math.sin(toRad(endAngle));
-    const large = p > 50 ? 1 : 0;
-    return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${R} ${R} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
-  };
 
   const needleDeg = -90 + (displayPct / 100) * 180;
 
@@ -471,20 +457,23 @@ function ArcRacerGauge({
 }
 
 export default function DashboardPage() {
-  const { tasks, logs, log, pomoHistory, quickLinks, calendarEvents, forgeItems } = useAppStore();
+  const { tasks, logs, log, calendarEvents, forgeItems, quickLinks } = useAppStore();
 
+  const dashboardLogged = useRef(false);
   useEffect(() => {
-    log("system", "Dashboard loaded", "System");
-  }, []);
+    if (!dashboardLogged.current) {
+      log("system", "Dashboard loaded", "System");
+      dashboardLogged.current = true;
+    }
+  }, [log]);
 
   const upcoming = useMemo(
     () => tasks.filter((t) => t.status === "pending").slice(0, 5),
     [tasks],
   );
-  const [heatmap, setHeatmap] = useState<number[]>([]);
-  useEffect(() => {
-    setHeatmap(Array.from({ length: 16 * 7 }, () => Math.floor(Math.random() * 5)));
-  }, []);
+
+  const heatmap = useMemo(() => Array.from({ length: 16 * 7 }, (_, i) => (i * 137) % 5), []);
+
   const recentLogs = useMemo(
     () =>
       [...logs]
@@ -495,12 +484,13 @@ export default function DashboardPage() {
   );
 
   const [hasRecentLog, setHasRecentLog] = useState(false);
-  const [totalLogsToday, setTotalLogsToday] = useState(0);
+
+  const totalLogsToday = useMemo(() => {
+    const todayStart = new Date().setHours(0, 0, 0, 0);
+    return logs.filter((l) => l.type !== "system" && new Date(l.timestamp).getTime() >= todayStart).length;
+  }, [logs]);
 
   useEffect(() => {
-    const todayStart = new Date().setHours(0, 0, 0, 0);
-    setTotalLogsToday(logs.filter((l) => l.type !== "system" && new Date(l.timestamp).getTime() >= todayStart).length);
-
     const checkRecent = () => {
       const recent = logs.some((l) => l.type !== "system" && (Date.now() - new Date(l.timestamp).getTime() < 5000));
       setHasRecentLog(recent);
@@ -509,6 +499,31 @@ export default function DashboardPage() {
     const interval = setInterval(checkRecent, 1000);
     return () => clearInterval(interval);
   }, [logs]);
+  const streak = useMemo(() => {
+    return Math.max(0, ...forgeItems.map(i => i.streak), 0);
+  }, [forgeItems]);
+
+  const moodVal = useMemo(() => {
+    // Just a placeholder mood logic based on today's completions
+    const today = new Date().toISOString().split('T')[0];
+    const totalHabits = forgeItems.length;
+    const completedToday = forgeItems.filter(i => i.completions[today]).length;
+    if (totalHabits === 0) return 'neutral';
+    const pct = completedToday / totalHabits;
+    if (pct > 0.7) return 'happy';
+    if (pct > 0.3) return 'neutral';
+    return 'focused';
+  }, [forgeItems]);
+
+  const moodEmoji = useMemo(() => {
+    switch (moodVal) {
+      case 'happy': return <Smile className="w-8 h-8 text-success" />;
+      case 'neutral': return <Smile className="w-8 h-8 text-primary" />;
+      case 'focused': return <Flame className="w-8 h-8 text-sky-400" />;
+      default: return <Smile className="w-8 h-8 text-success" />;
+    }
+  }, [moodVal]);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -527,17 +542,17 @@ export default function DashboardPage() {
           label="Habit Streak"
           value={
             <span className="flex items-center gap-1">
-              12
+              {streak}
               <Flame className="w-6 h-6 text-warning" />
             </span>
           }
           sub="Days"
-          trend="Personal best"
+          trend="Current best"
           color="hsl(var(--warning))"
         />
         <StatCard
           label="Mood"
-          value={<Smile className="w-8 h-8 text-success" />}
+          value={moodEmoji}
           sub="Today"
           color="hsl(var(--success))"
         />
@@ -743,11 +758,11 @@ export default function DashboardPage() {
               <span className="widget-title text-[10px]">📅 Upcoming Events</span>
               <span className="text-[9px] font-mono text-muted-foreground">{calendarEvents.length}</span>
             </div>
-            {calendarEvents.filter(e => e.startDate >= new Date().toISOString().split('T')[0]).slice(0, 4).length === 0 ? (
+            {calendarEvents.filter((e: CalendarEvent) => e.startDate >= new Date().toISOString().split('T')[0]).slice(0, 4).length === 0 ? (
               <p className="text-[10px] text-muted-foreground font-mono py-2 text-center">No upcoming events</p>
             ) : (
               <div className="space-y-1.5">
-                {calendarEvents.filter(e => e.startDate >= new Date().toISOString().split('T')[0]).sort((a, b) => a.startDate.localeCompare(b.startDate)).slice(0, 4).map(e => {
+                {calendarEvents.filter((e: CalendarEvent) => e.startDate >= new Date().toISOString().split('T')[0]).sort((a: CalendarEvent, b: CalendarEvent) => a.startDate.localeCompare(b.startDate)).slice(0, 4).map((e: CalendarEvent) => {
                   const eventDate = new Date(e.startDate);
                   const isToday = eventDate.toDateString() === new Date().toDateString();
                   const isTomorrow = new Date(new Date().setDate(new Date().getDate() + 1)).toDateString() === eventDate.toDateString();
@@ -824,7 +839,15 @@ export default function DashboardPage() {
                           ? "border-l-green-400"
                           : l.type === "pomodoro"
                             ? "border-l-cyan-400"
-                            : "border-l-violet-400";
+                            : l.type === "note"
+                              ? "border-l-pink-400"
+                              : l.type === "forge"
+                                ? "border-l-orange-400"
+                                : l.type === "link"
+                                  ? "border-l-sky-400"
+                                  : l.type === "calendar"
+                                    ? "border-l-fuchsia-400"
+                                    : "border-l-violet-400";
                   const textColor =
                     l.type === "error"
                       ? "text-red-400"
@@ -834,7 +857,15 @@ export default function DashboardPage() {
                           ? "text-green-400"
                           : l.type === "pomodoro"
                             ? "text-cyan-400"
-                            : "text-violet-400";
+                            : l.type === "note"
+                              ? "text-pink-400"
+                              : l.type === "forge"
+                                ? "text-orange-400"
+                                : l.type === "link"
+                                  ? "text-sky-400"
+                                  : l.type === "calendar"
+                                    ? "text-fuchsia-400"
+                                    : "text-violet-400";
                   const typeLabel =
                     l.type === "error"
                       ? "ERR"
@@ -844,9 +875,17 @@ export default function DashboardPage() {
                           ? "TSK"
                           : l.type === "pomodoro"
                             ? "POM"
-                            : l.type === "system"
-                              ? "SYS"
-                              : "INF";
+                            : l.type === "note"
+                              ? "NTE"
+                              : l.type === "forge"
+                                ? "FRG"
+                                : l.type === "link"
+                                  ? "LNK"
+                                  : l.type === "calendar"
+                                    ? "CAL"
+                                    : l.type === "system"
+                                      ? "SYS"
+                                      : "INF";
                   return (
                     <div
                       key={l.id}
@@ -860,7 +899,7 @@ export default function DashboardPage() {
                       <span className="font-mono text-muted-foreground whitespace-nowrap text-[8px]">
                         {dateStr} {timeStr}
                       </span>{" "}
-                      <span className="truncate text-white text-muted-foreground">
+                      <span className={cn("truncate", textColor)}>
                         {l.msg}
                       </span>
                     </div>
@@ -881,17 +920,17 @@ export default function DashboardPage() {
               <span className="text-[9px] font-mono text-muted-foreground">
                 {(() => {
                   const todayStr = new Date().toISOString().split('T')[0];
-                  const dailyItems = forgeItems.filter(i => i.type === 'daily');
-                  const done = dailyItems.filter(i => i.completions[todayStr]).length;
+                  const dailyItems = forgeItems.filter((i: ForgeItem) => i.type === 'daily');
+                  const done = dailyItems.filter((i: ForgeItem) => i.completions[todayStr]).length;
                   return `${done}/${dailyItems.length}`;
                 })()}
               </span>
             </div>
-            {forgeItems.filter(i => i.type === 'daily').length === 0 ? (
+            {forgeItems.filter((i: ForgeItem) => i.type === 'daily').length === 0 ? (
               <p className="text-[10px] text-muted-foreground font-mono py-2 text-center">No habits yet</p>
             ) : (
               <div className="space-y-1">
-                {forgeItems.filter(i => i.type === 'daily').slice(0, 5).map(item => {
+                {forgeItems.filter((i: ForgeItem) => i.type === 'daily').slice(0, 5).map((item: ForgeItem) => {
                   const todayStr = new Date().toISOString().split('T')[0];
                   const done = item.completions[todayStr];
                   const { toggleForgeItem } = useAppStore.getState();
@@ -926,9 +965,9 @@ export default function DashboardPage() {
             ) : (
               <div className="grid grid-cols-3 gap-1.5">
                 {[...quickLinks]
-                  .sort((a, b) => (b.clickCount || 0) - (a.clickCount || 0))
+                  .sort((a: QuickLink, b: QuickLink) => (b.clickCount || 0) - (a.clickCount || 0))
                   .slice(0, 6)
-                  .map(link => (
+                  .map((link: QuickLink) => (
                     <a
                       key={link.id}
                       href={link.url}

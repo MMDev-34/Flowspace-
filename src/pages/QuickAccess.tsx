@@ -55,15 +55,6 @@ const COMMON_EMOJIS = [
   "🌐",
 ];
 
-const fetchFavicon = (url: string) => {
-  try {
-    const domain = new URL(url.startsWith("http") ? url : "https://" + url)
-      .hostname;
-    return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
-  } catch {
-    return "";
-  }
-};
 export default function QuickAccessPage() {
   const {
     quickCategories,
@@ -76,6 +67,10 @@ export default function QuickAccessPage() {
     reorderLinks,
     incrementClickCount,
   } = useAppStore();
+
+  const allLinksSorted = useMemo(() => {
+    return [...quickLinks].sort((a, b) => b.clickCount - a.clickCount);
+  }, [quickLinks]);
 
   // Search
   const [search, setSearch] = useState("");
@@ -116,17 +111,29 @@ export default function QuickAccessPage() {
   const dragOverItem = useRef<string | null>(null);
 
   // Keyboard bindings: map key 1-9 to link IDs
-  const [keyBindings, setKeyBindings] = useState<Record<number, string>>({});
-
-  // Load key bindings from localStorage
-  useEffect(() => {
+  const [keyBindings, setKeyBindings] = useState<Record<number, string>>(() => {
     const saved = localStorage.getItem("qa-keybindings");
     if (saved) {
       try {
-        setKeyBindings(JSON.parse(saved));
-      } catch {}
+        return JSON.parse(saved);
+      } catch {
+        return {};
+      }
     }
-  }, []);
+    return {};
+  });
+
+  const getVisibleLinks = useCallback(() => {
+    const q = search.toLowerCase();
+    return quickLinks
+      .filter((l) => {
+        if (!q) return true;
+        return (
+          l.name.toLowerCase().includes(q) || l.url.toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }, [quickLinks, search]);
 
   // Save key bindings
   const saveKeyBindings = (bindings: Record<number, string>) => {
@@ -184,19 +191,7 @@ export default function QuickAccessPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [quickLinks, search, keyBindings]);
-
-  const getVisibleLinks = useCallback(() => {
-    const q = search.toLowerCase();
-    return quickLinks
-      .filter((l) => {
-        if (!q) return true;
-        return (
-          l.name.toLowerCase().includes(q) || l.url.toLowerCase().includes(q)
-        );
-      })
-      .sort((a, b) => a.order - b.order);
-  }, [quickLinks, search]);
+  }, [quickLinks, keyBindings, incrementClickCount, getVisibleLinks]);
 
   // Most used links
   const mostUsedLinks = useMemo(() => {
@@ -282,8 +277,11 @@ export default function QuickAccessPage() {
 
   const confirmDelete = () => {
     if (!deleteTarget) return;
-    if (deleteTarget.type === "category") deleteQuickCategory(deleteTarget.id);
-    else deleteQuickLink(deleteTarget.id);
+    if (deleteTarget.type === "category") {
+      deleteQuickCategory(deleteTarget.id);
+    } else {
+      deleteQuickLink(deleteTarget.id);
+    }
     setDeleteTarget(null);
   };
 
@@ -315,7 +313,7 @@ export default function QuickAccessPage() {
       return;
     const catLinks = quickLinks
       .filter((l) => l.categoryId === categoryId)
-      .sort((a, b) => a.order - b.order);
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     const fromIdx = catLinks.findIndex((l) => l.id === dragItem.current);
     const toIdx = catLinks.findIndex((l) => l.id === dragOverItem.current);
     if (fromIdx === -1 || toIdx === -1) return;
@@ -329,9 +327,6 @@ export default function QuickAccessPage() {
     dragItem.current = null;
     dragOverItem.current = null;
   };
-
-  const visibleLinks = getVisibleLinks();
-  const allLinksSorted = [...quickLinks].sort((a, b) => a.order - b.order);
 
   return (
     <div className="space-y-5">
@@ -400,7 +395,7 @@ export default function QuickAccessPage() {
           </button>
         )}
       </div>
-            {/* Active Shortcuts Bar */}
+      {/* Active Shortcuts Bar */}
       {Object.keys(keyBindings).length > 0 && !search && (
         <div className="flex items-center gap-2 px-3 py-2 bg-card/50 border border-border/50 rounded-xl overflow-x-auto">
           <span className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground whitespace-nowrap">
@@ -539,7 +534,7 @@ export default function QuickAccessPage() {
             ) : (
               <div className="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-1.5">
                 {" "}
-                {cat.links.map((link, idx) => {
+                {cat.links.map((link) => {
                   const globalIdx = allLinksSorted.findIndex(
                     (l) => l.id === link.id,
                   );
@@ -566,9 +561,9 @@ export default function QuickAccessPage() {
                         onContextMenu={(e) => handleContextMenu(e, link)}
                         className="block bg-card/50 border border-border/40 hover:border-blue-400/60 rounded-xl px-2 py-2 text-center transition-all duration-300 hover:bg-blue-500/[0.02] hover:-translate-y-0.5 hover:shadow-[0_0_18px_rgba(59,130,246,0.3),0_0_4px_rgba(59,130,246,0.2)] cursor-pointer"
                       >
-<span className="text-lg flex items-center justify-center mb-1">
-  {renderIcon(link.icon)}
-</span>                        <span className="text-[9px] font-mono text-muted-foreground truncate block group-hover:text-foreground/80 transition-colors">
+                        <span className="text-lg flex items-center justify-center mb-1">
+                          {renderIcon(link.icon)}
+                        </span>                        <span className="text-[9px] font-mono text-muted-foreground truncate block group-hover:text-foreground/80 transition-colors">
                           {link.name}
                         </span>
                       </a>
@@ -682,7 +677,7 @@ export default function QuickAccessPage() {
                 Icon
               </label>
 
-                   {/* Current icon preview */}
+              {/* Current icon preview */}
               {linkIcon && (
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-lg">
@@ -761,7 +756,7 @@ export default function QuickAccessPage() {
                     className={cn(
                       "w-7 h-7 rounded-lg text-sm flex items-center justify-center hover:bg-primary/10 transition-all",
                       linkIcon === emoji &&
-                        "bg-primary/15 ring-1 ring-primary/30",
+                      "bg-primary/15 ring-1 ring-primary/30",
                     )}
                   >
                     {emoji}
@@ -843,7 +838,7 @@ export default function QuickAccessPage() {
                     className={cn(
                       "w-7 h-7 rounded-lg text-sm flex items-center justify-center hover:bg-primary/10 transition-all",
                       catIcon === emoji &&
-                        "bg-primary/15 ring-1 ring-primary/30",
+                      "bg-primary/15 ring-1 ring-primary/30",
                     )}
                   >
                     {emoji}
