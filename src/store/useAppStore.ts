@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { ActivityEvent, ActivityModule, DailyActivity } from '@/types/activity';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -131,6 +132,7 @@ interface AppState {
   noteFolders: NoteFolder[];
   forgeItems: ForgeItem[];
 
+
   // Settings
   pomoFocusMin: number;
   pomoBreakMin: number;
@@ -141,6 +143,12 @@ interface AppState {
   weatherCity: string;
   themeMode: 'light' | 'dark';
   logRetentionDays: number; // 0 means never delete
+
+  // Activity tracking
+  activityEvents: ActivityEvent[];
+  logActivity: (module: ActivityModule, action: string, metadata?: Record<string, unknown>) => void;
+  getDailyActivity: (days?: number) => DailyActivity[];
+  getActivityStreak: () => { current: number; longest: number };
 
   // ── Task actions ──────────────────────────────────────────────────────────
   addTask: (task: Omit<Task, 'id' | 'status' | 'completedAt'>) => void;
@@ -195,6 +203,7 @@ interface AppState {
   setWeatherCity: (city: string) => void;
   setLogRetentionDays: (days: number) => void;
   cleanupLogs: () => void;
+
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -252,6 +261,7 @@ const startTimer = (
         completedAt: new Date().toISOString(),
       };
       set({ pomoHistory: [...state.pomoHistory, newSession] });
+      get().logActivity('pomodoro', 'session_completed', { phase, durationMin: completedDur });
 
       set({
         logs: [...state.logs, {
@@ -308,6 +318,7 @@ export const useAppStore = create<AppState>()(
       weatherCity: 'Bangalore',
       themeMode: 'dark',
       logRetentionDays: 30, // Default 30 days
+      activityEvents: [],
 
       // Quick Access
       quickCategories: [
@@ -363,7 +374,9 @@ export const useAppStore = create<AppState>()(
         const task: Task = { ...taskData, id: generateId(), status: 'pending', completedAt: undefined };
         set((s) => ({ tasks: [...s.tasks, task] }));
         get().log('task', `Task "${task.title}" added`, 'Task');
+        get().logActivity('tasks', 'task_created', { taskId: task.id });
       },
+
       updateTask: (id, patch) => {
         const task = get().tasks.find((t) => t.id === id);
         if (task) get().log('task', `Task "${task.title}" updated`, 'Task');
@@ -380,6 +393,9 @@ export const useAppStore = create<AppState>()(
           }),
         }));
         get().log('task', `"${task.title}" → ${status}`, 'Task');
+        if (status === 'done') {
+          get().logActivity('tasks', 'task_completed', { taskId: id });
+        }
       },
       deleteTask: (id) => {
         const task = get().tasks.find((t) => t.id === id);
@@ -445,12 +461,14 @@ export const useAppStore = create<AppState>()(
         const link = get().quickLinks.find((l) => l.id === id);
         if (link) get().log('link', `Link clicked: "${link.name}"`, 'Quick Access');
         set((s) => ({ quickLinks: s.quickLinks.map((l) => (l.id === id ? { ...l, clickCount: l.clickCount + 1 } : l)) }));
+        get().logActivity('quickAccess', 'link_clicked', { linkId: id });
       },
 
       addCalendarEvent: (event) => {
         const ev: CalendarEvent = { ...event, id: generateId(), createdAt: new Date().toISOString() };
         set((s) => ({ calendarEvents: [...s.calendarEvents, ev] }));
         get().log('calendar', `Event "${ev.title}" added`, 'Calendar');
+        get().logActivity('calendar', 'event_created', { eventId: ev.id });
       },
       updateCalendarEvent: (id, patch) => {
         const ev = get().calendarEvents.find(e => e.id === id);
@@ -467,6 +485,7 @@ export const useAppStore = create<AppState>()(
       addNote: (note) => {
         const n: Note = { createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...note };
         set((s) => ({ notes: [n, ...s.notes] }));
+        get().logActivity('notes', 'note_created', { noteId: n.id });
       },
       updateNote: (id, patch) => {
         set((s) => ({ notes: s.notes.map((n) => (n.id === id ? { ...n, ...patch, updatedAt: new Date().toISOString() } : n)) }));
@@ -527,6 +546,9 @@ export const useAppStore = create<AppState>()(
             return { ...i, completions: next, streak: newStreak, bestStreak: Math.max(i.bestStreak, newStreak), updatedAt: new Date().toISOString() };
           }),
         }));
+        if (!done) {
+          get().logActivity('forge', 'habit_checked', { habitId: id });
+        }
       },
       incrementTarget: (id) => {
         const item = get().forgeItems.find(i => i.id === id);
@@ -573,6 +595,77 @@ export const useAppStore = create<AppState>()(
       // ── Settings ──────────────────────────────────────────────────────────
       setThemeMode: (mode) => set({ themeMode: mode }),
       setWeatherCity: (city) => set({ weatherCity: city }),
+
+
+      // ── Activity tracking ───────────────────────────────────────────────────
+      logActivity: (module, action, metadata) => {
+        const now = new Date();
+        const event: ActivityEvent = {
+          id: generateId(),
+          timestamp: now.getTime(),
+          date: now.toISOString().split('T')[0],
+          module,
+          action,
+          metadata,
+        };
+        set((s) => {
+          const events = [...s.activityEvents, event];
+          const cutoff = Date.now() - 400 * 24 * 60 * 60 * 1000;
+          return { activityEvents: events.filter(e => e.timestamp > cutoff) };
+        });
+      },
+
+      getDailyActivity: (days = 365) => {
+        const { activityEvents } = get();
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - days);
+        const filtered = activityEvents.filter(e => e.timestamp >= cutoff.getTime());
+
+        const map = new Map<string, DailyActivity>();
+        filtered.forEach(event => {
+          if (!map.has(event.date)) {
+            map.set(event.date, {
+              date: event.date,
+              total: 0,
+              breakdown: { tasks: 0, pomodoro: 0, logs: 0, quickAccess: 0, calendar: 0, notes: 0, forge: 0, dashboard: 0 }
+            });
+          }
+          const day = map.get(event.date)!;
+          day.total += 1;
+          day.breakdown[event.module] += 1;
+        });
+
+        const result: DailyActivity[] = [];
+        for (let i = days; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          const dateStr = d.toISOString().split('T')[0];
+          result.push(map.get(dateStr) || {
+            date: dateStr,
+            total: 0,
+            breakdown: { tasks: 0, pomodoro: 0, logs: 0, quickAccess: 0, calendar: 0, notes: 0, forge: 0, dashboard: 0 }
+          });
+        }
+        return result;
+      },
+
+      getActivityStreak: () => {
+        const daily = get().getDailyActivity(365);
+        let current = 0;
+        let longest = 0;
+        let temp = 0;
+        for (let i = daily.length - 1; i >= 0; i--) {
+          if (daily[i].total > 0) {
+            temp++;
+            if (i === daily.length - 1) current = temp;
+          } else {
+            longest = Math.max(longest, temp);
+            temp = 0;
+          }
+        }
+        longest = Math.max(longest, temp);
+        return { current, longest };
+      },
     }),
 
     {

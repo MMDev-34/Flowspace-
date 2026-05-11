@@ -1,5 +1,15 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { LayoutDashboard, ListChecks, Timer, ScrollText, Zap, Calendar, FileText, Flame } from 'lucide-react';
+import {
+  LayoutDashboard,
+  ListChecks,
+  Timer,
+  ScrollText,
+  Zap,
+  Calendar,
+  FileText,
+  Flame,
+  BarChart3,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const links = [
@@ -11,7 +21,7 @@ const links = [
   { to: '/calendar', icon: Calendar, label: 'Calendar' },
   { to: '/notes', icon: FileText, label: 'Notes' },
   { to: '/forge', icon: Flame, label: 'Forge' },
-  { icon: '📈', label: 'Insights', path: '/insights' }
+  { to: '/insights', icon: BarChart3, label: 'Insights' },
 ];
 
 export default function Layout() {
