@@ -13,6 +13,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Plus, Check, Trash2, X, Clock, AlertTriangle,
   Flame, Calendar as CalendarIcon, Tag, ChevronRight, Inbox, ListChecks,
+  CalendarDays,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -20,6 +21,7 @@ import { format } from 'date-fns';
 import { Calendar } from '../components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Button } from '../components/ui/button';
+import { motion, AnimatePresence } from 'motion/react';
 
 type View = 'today' | 'upcoming' | 'overdue' | 'completed' | 'all';
 
@@ -31,20 +33,19 @@ const VIEWS: { id: View; label: string; icon: LucideIcon }[] = [
   { id: 'all', label: 'All', icon: Inbox },
 ];
 
-const PRESET_TAGS = ['Work', 'Personal', 'Coding', 'Design', 'QA', 'Urgent'];
-
-const fmtDue = (iso?: string) => {
+const fmtDue = (iso?: string, allDay?: boolean) => {
   if (!iso) return '';
   const d = new Date(iso);
   const now = new Date();
   const diff = d.getTime() - now.getTime();
   const day = 86400000;
   const sameDay = isToday(iso);
-  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-  if (sameDay) return `Today ${time}`;
-  if (diff > 0 && diff < day) return `Tomorrow ${time}`;
-  if (diff > -day && diff < 0) return `Yesterday ${time}`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ` ${time}`;
+  const time = allDay ? '' : ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+  if (sameDay) return `Today${time}`;
+  if (diff > 0 && diff < day) return `Tomorrow${time}`;
+  if (diff > -day && diff < 0) return `Yesterday${time}`;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + time;
 };
 
 const priorityChip = (p: TaskPriority) =>
@@ -84,21 +85,26 @@ const emptyDraft = () => ({
   priority: 'medium' as TaskPriority,
   due: todayDateStr(),
   dueTime: '',
+  allDay: true,
   tags: [] as string[],
 });
 
 export default function TasksPage() {
   const {
     tasks, addTask, updateTask, setTaskStatus, deleteTask,
+    customTags, addCustomTag, removeCustomTag, resetTaskData
   } = useAppStore();
 
   const [view, setView] = useState<View>('today');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [showAdd, setShowAdd] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState(emptyDraft());
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [isAddingTag, setIsAddingTag] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
   const titleRef = useRef<HTMLInputElement>(null);
 
   // keyboard shortcut: 'n' to add
@@ -135,10 +141,11 @@ export default function TasksPage() {
   }), [tasks]);
 
   const allTags = useMemo(() => {
-    const s = new Set<string>(PRESET_TAGS);
+    const s = new Set<string>();
+    customTags.forEach(t => s.add(t));
     tasks.forEach(t => t.tags.forEach(tag => s.add(tag)));
-    return Array.from(s);
-  }, [tasks]);
+    return Array.from(s).sort();
+  }, [tasks, customTags]);
 
   const filtered = useMemo(() => {
     let list = tasks;
@@ -198,7 +205,12 @@ export default function TasksPage() {
     if (!draft.title.trim()) return;
     let due: string | undefined;
     if (draft.due) {
-      due = new Date(`${draft.due}T${draft.dueTime || '09:00'}`).toISOString();
+      if (draft.allDay) {
+        // Use noon to avoid timezone edge cases while keeping it "all day"
+        due = new Date(`${draft.due}T12:00:00`).toISOString();
+      } else {
+        due = new Date(`${draft.due}T${draft.dueTime || '09:00'}`).toISOString();
+      }
     }
     addTask({
       title: draft.title.trim(),
@@ -206,6 +218,7 @@ export default function TasksPage() {
       priority: draft.priority,
       tags: draft.tags,
       due,
+      allDay: draft.allDay,
     });
     setDraft(emptyDraft());
     setShowAdd(false);
@@ -241,6 +254,13 @@ export default function TasksPage() {
             placeholder="Search..."
             className="bg-section border border-border rounded-lg px-3 py-1.5 text-xs focus:border-primary outline-none w-44"
           />
+          <button
+            onClick={() => setShowResetConfirm(true)}
+            className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all group"
+            title="Reset Tasks"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
           <button
             onClick={() => {
               setDraft(emptyDraft());
@@ -314,19 +334,64 @@ export default function TasksPage() {
           All
         </button>
         {allTags.map(tag => (
-          <button
-            key={tag}
-            onClick={() => setTagFilter(tag === tagFilter ? null : tag)}
-            className={cn(
-              'px-2.5 py-0.5 text-[10px] rounded-full font-mono uppercase tracking-wider border transition-colors',
-              tagFilter === tag
-                ? 'bg-primary/15 text-primary border-primary/40'
-                : 'border-border text-muted-foreground hover:border-primary/30'
-            )}
-          >
-            #{tag}
-          </button>
+          <div key={tag} className="group relative flex items-center">
+            <button
+              onClick={() => setTagFilter(tag === tagFilter ? null : tag)}
+              className={cn(
+                'px-2.5 py-0.5 text-[10px] rounded-full font-mono uppercase tracking-wider border transition-colors pr-6',
+                tagFilter === tag
+                  ? 'bg-primary/15 text-primary border-primary/40'
+                  : 'border-border text-muted-foreground hover:border-primary/30'
+              )}
+            >
+              #{tag}
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                removeCustomTag(tag);
+                if (tagFilter === tag) setTagFilter(null);
+              }}
+              className="absolute right-1.5 opacity-0 group-hover:opacity-100 p-0.5 hover:text-destructive transition-all"
+              title="Remove Tag"
+            >
+              <X className="w-2.5 h-2.5" />
+            </button>
+          </div>
         ))}
+
+        {isAddingTag ? (
+          <div className="flex items-center gap-1 border border-primary/30 rounded-full px-2 py-0.5 bg-section">
+            <input
+              autoFocus
+              value={newTagName}
+              onChange={e => setNewTagName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  addCustomTag(newTagName);
+                  setNewTagName('');
+                  setIsAddingTag(false);
+                }
+                if (e.key === 'Escape') setIsAddingTag(false);
+              }}
+              placeholder="Tag name"
+              className="bg-transparent text-[10px] outline-none w-20 px-1"
+            />
+            <button onClick={() => { addCustomTag(newTagName); setNewTagName(''); setIsAddingTag(false); }}>
+              <Check className="w-3 h-3 text-primary" />
+            </button>
+            <button onClick={() => setIsAddingTag(false)}>
+              <X className="w-3 h-3 text-muted-foreground" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setIsAddingTag(true)}
+            className="px-2 py-0.5 text-[10px] rounded-full border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary transition-all flex items-center gap-1"
+          >
+            <Plus className="w-2.5 h-2.5" /> New Tag
+          </button>
+        )}
       </div>
 
       {/* Main grid: list + side */}
@@ -389,7 +454,7 @@ export default function TasksPage() {
                         overdue ? 'text-destructive' : isToday(t.due) ? 'text-warning' : 'text-subtle'
                       )}>
                         <Clock className="w-3 h-3" />
-                        {fmtDue(t.due)}
+                        {fmtDue(t.due, t.allDay)}
                       </span>
                     )}
                     {t.tags.slice(0, 3).map(tag => (
@@ -421,6 +486,7 @@ export default function TasksPage() {
             <DetailPanel
               key={selected.id}
               task={selected}
+              allTags={allTags}
               onClose={() => setSelectedId(null)}
               onUpdate={(patch) => updateTask(selected.id, patch)}
               onStatus={(s) => setTaskStatus(selected.id, s)}
@@ -527,159 +593,252 @@ export default function TasksPage() {
       </div>
 
       {/* Add modal */}
-      {showAdd && (
-        <div
-          className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
-          onClick={() => setShowAdd(false)}
-        >
-          <form
-            onSubmit={submit}
-            onClick={e => e.stopPropagation()}
-            className="bg-widget border border-border rounded-xl p-5 w-full max-w-lg space-y-4 shadow-glow-cyan"
-          >
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <Plus className="w-4 h-4 text-primary" /> New Task
-              </h3>
-              <button type="button" onClick={() => setShowAdd(false)} className="text-muted-foreground hover:text-foreground">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <input
-              ref={titleRef}
-              value={draft.title}
-              onChange={e => setDraft(d => ({ ...d, title: e.target.value }))}
-              placeholder="Task title (required)"
-              maxLength={140}
-              className="w-full bg-section border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
+      <AnimatePresence>
+        {showAdd && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowAdd(false)}
+              className="absolute inset-0 bg-background/60 backdrop-blur-sm"
             />
-            <textarea
-              value={draft.description}
-              onChange={e => setDraft(d => ({ ...d, description: e.target.value }))}
-              placeholder="Description (optional)"
-              maxLength={1000}
-              rows={2}
-              className="w-full bg-section border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none resize-none"
-            />
-
-            {/* Priority */}
-            <div>
-              <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-1.5">Priority</div>
-              <div className="grid grid-cols-3 gap-2">
-                {(['low', 'medium', 'high'] as TaskPriority[]).map(p => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setDraft(d => ({ ...d, priority: p }))}
-                    className={cn(
-                      'px-2 py-1.5 rounded-md text-xs font-mono uppercase tracking-wider border transition-colors',
-                      draft.priority === p
-                        ? p === 'high' ? 'bg-destructive/15 text-destructive border-destructive/40'
-                          : p === 'medium' ? 'bg-warning/15 text-warning border-warning/40'
-                            : 'bg-primary/15 text-primary border-primary/40'
-                        : 'border-border text-muted-foreground hover:border-primary/30'
-                    )}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Date + Time */}
-            <div>
-              <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-1.5">Due date & time</div>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                <button type="button" onClick={() => setQuickDate(0)}
-                  className="px-2.5 py-1 text-[10px] rounded-full font-mono border border-border text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors">
-                  Today
-                </button>
-                <button type="button" onClick={() => setQuickDate(1)}
-                  className="px-2.5 py-1 text-[10px] rounded-full font-mono border border-border text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors">
-                  Tomorrow
-                </button>
-                <button type="button" onClick={() => setQuickDate(7)}
-                  className="px-2.5 py-1 text-[10px] rounded-full font-mono border border-border text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors">
-                  Next week
-                </button>
-                <button type="button" onClick={() => setDraft(d => ({ ...d, due: '', dueTime: '' }))}
-                  className="px-2.5 py-1 text-[10px] rounded-full font-mono border border-border text-muted-foreground hover:border-destructive/40 hover:text-destructive transition-colors">
-                  No date
+            <motion.form
+              initial={{ opacity: 0, scale: 0.98, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98, y: 10 }}
+              onSubmit={submit}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+              className="relative bg-widget border border-border rounded-xl p-5 w-full max-w-md space-y-5 shadow-2xl"
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold flex items-center gap-2">
+                  <Plus className="w-4 h-4 text-primary" /> New Task
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowAdd(false)}
+                  className="p-1 rounded-md hover:bg-hover text-muted-foreground transition-colors"
+                >
+                  <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className={cn(
-                        'justify-start text-left font-normal text-xs h-auto py-2 bg-section border-border',
-                        !draft.due && 'text-muted-foreground'
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-3.5 w-3.5" />
-                      {draftDateObj ? format(draftDateObj, 'PPP') : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 z-[60]" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={draftDateObj}
-                      onSelect={(d) => {
-                        if (d) setDraft(dr => ({ ...dr, due: toDateStr(d) }));
-                        setCalendarOpen(false);
-                      }}
-                      initialFocus
-                      className={cn('p-3 pointer-events-auto')}
-                    />
-                  </PopoverContent>
-                </Popover>
+
+              <div className="space-y-3">
                 <input
-                  type="time"
-                  value={draft.dueTime}
-                  onChange={e => setDraft(d => ({ ...d, dueTime: e.target.value }))}
-                  className="bg-section border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
+                  ref={titleRef}
+                  value={draft.title}
+                  onChange={e => setDraft(d => ({ ...d, title: e.target.value }))}
+                  placeholder="What needs to be done?"
+                  maxLength={140}
+                  className="w-full bg-section border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none transition-all placeholder:text-muted-foreground/40"
+                />
+
+                <textarea
+                  value={draft.description}
+                  onChange={e => setDraft(d => ({ ...d, description: e.target.value }))}
+                  placeholder="Add notes..."
+                  maxLength={500}
+                  rows={2}
+                  className="w-full bg-section border border-border rounded-lg px-3 py-2 text-xs focus:border-primary outline-none resize-none transition-all placeholder:text-muted-foreground/40"
                 />
               </div>
-            </div>
 
-            {/* Tags */}
-            <div>
-              <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-1.5">Tags</div>
-              <div className="flex flex-wrap gap-1.5">
-                {PRESET_TAGS.map(tag => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => toggleDraftTag(tag)}
-                    className={cn(
-                      'px-2.5 py-1 text-[10px] rounded-full font-mono border transition-colors',
-                      draft.tags.includes(tag)
-                        ? 'bg-primary/15 text-primary border-primary/40'
-                        : 'border-border text-muted-foreground hover:border-primary/30'
-                    )}
-                  >
-                    #{tag}
-                  </button>
-                ))}
+              <div className="space-y-4 pt-1">
+                {/* Schedule Row */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Schedule</label>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className={cn(
+                              'flex-1 flex items-center gap-2 h-9 px-3 rounded-lg border border-border bg-section text-xs transition-all hover:border-primary/40',
+                              !draft.due && 'text-muted-foreground'
+                            )}
+                          >
+                            <CalendarDays className="h-3.5 w-3.5 text-primary" />
+                            <span>{draftDateObj ? format(draftDateObj, 'MMM d, yyyy') : 'No Date'}</span>
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0 z-[60]" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={draftDateObj}
+                            onSelect={(d) => {
+                              if (d) setDraft(dr => ({ ...dr, due: toDateStr(d) }));
+                              setCalendarOpen(false);
+                            }}
+                            initialFocus
+                            className="p-2 bg-widget border-border shadow-2xl rounded-xl"
+                          />
+                        </PopoverContent>
+                      </Popover>
+
+                      <div className="flex items-center bg-section border border-border rounded-lg p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setDraft(d => ({ ...d, allDay: !d.allDay }))}
+                          className={cn(
+                            "h-7 px-3 rounded-md text-[10px] font-bold uppercase transition-all",
+                            draft.allDay
+                              ? "bg-primary/20 text-primary"
+                              : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          All Day
+                        </button>
+                        {!draft.allDay && (
+                          <input
+                            type="time"
+                            value={draft.dueTime}
+                            onChange={e => setDraft(d => ({ ...d, dueTime: e.target.value }))}
+                            className="bg-transparent border-none text-[10px] px-2 py-1 outline-none w-20"
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+                      {[{ l: 'Today', d: 0 }, { l: 'Tomorrow', d: 1 }, { l: 'Mon', d: (8 - new Date().getDay()) % 7 || 7 }].map(q => (
+                        <button
+                          key={q.l}
+                          type="button"
+                          onClick={() => setQuickDate(q.d)}
+                          className="px-2 py-0.5 text-[9px] rounded-md border border-border bg-section text-muted-foreground hover:border-primary/40 transition-colors whitespace-nowrap"
+                        >
+                          {q.l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Priority */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Priority</label>
+                    <div className="flex bg-section p-0.5 rounded-lg border border-border">
+                      {(['low', 'medium', 'high'] as TaskPriority[]).map(p => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setDraft(d => ({ ...d, priority: p }))}
+                          className={cn(
+                            'flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all border',
+                            draft.priority === p
+                              ? p === 'high' ? 'bg-destructive border-destructive text-white shadow-sm shadow-destructive/20'
+                                : p === 'medium' ? 'bg-warning border-warning text-black shadow-sm shadow-warning/20'
+                                  : 'bg-primary border-primary text-white shadow-sm shadow-primary/20'
+                              : 'bg-transparent border-border text-muted-foreground hover:bg-hover hover:border-muted-foreground/30'
+                          )}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Tags */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Tags</label>
+                    <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto p-0.5">
+                      {allTags.map(tag => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => toggleDraftTag(tag)}
+                          className={cn(
+                            'px-2 py-0.5 rounded-md text-[9px] border transition-all',
+                            draft.tags.includes(tag)
+                              ? 'bg-primary/20 text-primary border-primary/30'
+                              : 'bg-section border-border text-muted-foreground hover:border-primary/30'
+                          )}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <button type="submit" className="w-full bg-primary text-primary-foreground py-2 rounded-lg text-sm font-medium hover:shadow-glow-cyan transition-all">
-              Create Task
-            </button>
-          </form>
-        </div>
-      )}
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAdd(false)}
+                  className="flex-1 py-2 rounded-lg text-xs font-medium border border-border hover:bg-hover transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-[2] bg-primary text-primary-foreground py-2 rounded-lg text-xs font-bold shadow-lg shadow-primary/10 hover:brightness-110 transition-all flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Create Task
+                </button>
+              </div>
+            </motion.form>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Reset Confirmation Modal */}
+      <AnimatePresence>
+        {showResetConfirm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowResetConfirm(false)}
+              className="absolute inset-0 bg-background/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98, y: 10 }}
+              className="relative bg-widget border border-border rounded-xl p-6 w-full max-w-sm space-y-4 shadow-2xl"
+            >
+              <div className="flex items-center gap-3 text-destructive">
+                <AlertTriangle className="w-6 h-6" />
+                <h3 className="text-lg font-bold">Reset Task Data?</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                This will permanently delete all tasks and reset custom tags. Notes, habits, and other data will not be affected. This action cannot be undone.
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowResetConfirm(false)}
+                  className="flex-1 py-2 rounded-lg text-xs font-semibold border border-border hover:bg-hover transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    resetTaskData();
+                    setShowResetConfirm(false);
+                  }}
+                  className="flex-1 bg-destructive text-white py-2 rounded-lg text-xs font-bold shadow-lg shadow-destructive/20 hover:brightness-110 transition-all"
+                >
+                  Yes, Reset Tasks
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 function DetailPanel({
-  task, onClose, onUpdate, onStatus,
+  task, allTags, onClose, onUpdate, onStatus,
 }: {
   task: Task;
+  allTags: string[];
   onClose: () => void;
   onUpdate: (patch: Partial<Task>) => void;
   onStatus: (s: TaskStatus) => void;
@@ -718,10 +877,10 @@ function DetailPanel({
             key={s}
             onClick={() => onStatus(s)}
             className={cn(
-              'px-2 py-1.5 rounded-md text-[10px] font-mono uppercase tracking-wider border transition-colors',
+              'px-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all',
               task.status === s
-                ? 'bg-primary/15 text-primary border-primary/40'
-                : 'border-border text-muted-foreground hover:border-primary/30'
+                ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                : 'bg-section border border-border text-muted-foreground hover:border-primary/30'
             )}
           >
             {statusMeta[s].label}
@@ -729,45 +888,110 @@ function DetailPanel({
         ))}
       </div>
 
-      <div>
-        <div className="widget-title mb-1.5">Description</div>
+      <div className="space-y-1.5">
+        <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Notes</label>
         <textarea
           value={task.description ?? ''}
           onChange={e => onUpdate({ description: e.target.value })}
-          placeholder="Add notes..."
+          placeholder="Add specific details about this task..."
           rows={3}
-          className="w-full bg-section border border-border rounded-lg px-2.5 py-1.5 text-xs focus:border-primary outline-none resize-none"
+          className="w-full bg-section border border-border rounded-xl px-3 py-2.5 text-xs focus:border-primary outline-none resize-none transition-all"
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <div className="widget-title mb-1.5">Priority</div>
-          <select
-            value={task.priority}
-            onChange={e => onUpdate({ priority: e.target.value as TaskPriority })}
-            className="w-full bg-section border border-border rounded-lg px-2 py-1.5 text-xs focus:border-primary outline-none"
-          >
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-          </select>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Priority</label>
+          <div className="flex bg-section p-0.5 rounded-lg border border-border">
+            {(['low', 'medium', 'high'] as TaskPriority[]).map(p => (
+              <button
+                key={p}
+                onClick={() => onUpdate({ priority: p })}
+                className={cn(
+                  'flex-1 py-1.5 rounded-md text-[9px] font-bold uppercase transition-all',
+                  task.priority === p
+                    ? p === 'high' ? 'bg-destructive text-white'
+                      : p === 'medium' ? 'bg-warning text-black'
+                        : 'bg-primary text-white'
+                    : 'text-muted-foreground hover:bg-hover'
+                )}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
         </div>
-        <div>
-          <div className="widget-title mb-1.5">Due</div>
-          <input
-            type="datetime-local"
-            value={task.due ? new Date(task.due).toISOString().slice(0, 16) : ''}
-            onChange={e => onUpdate({ due: e.target.value ? new Date(e.target.value).toISOString() : undefined })}
-            className="w-full bg-section border border-border rounded-lg px-2 py-1.5 text-xs focus:border-primary outline-none"
-          />
+        <div className="space-y-2">
+          <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Deadline</label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  'w-full justify-start text-left font-normal text-[10px] h-9 bg-section border-border rounded-lg',
+                  !task.due && 'text-muted-foreground'
+                )}
+              >
+                <CalendarIcon className="mr-2 h-3 w-3 text-primary" />
+                {task.due ? format(new Date(task.due), 'MMM d, yyyy') : 'No date'}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0 z-[60]" align="end">
+              <Calendar
+                mode="single"
+                selected={task.due ? new Date(task.due) : undefined}
+                onSelect={(d) => {
+                  if (d) {
+                    const current = task.due ? new Date(task.due) : new Date();
+                    current.setFullYear(d.getFullYear(), d.getMonth(), d.getDate());
+                    onUpdate({ due: current.toISOString() });
+                  } else {
+                    onUpdate({ due: undefined });
+                  }
+                }}
+                initialFocus
+                className="p-2 bg-widget border-border shadow-2xl rounded-xl"
+              />
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
-      <div>
-        <div className="widget-title mb-1.5">Tags</div>
-        <div className="flex flex-wrap gap-1.5">
-          {PRESET_TAGS.map(tag => {
+      <div className="flex items-center justify-between p-2.5 bg-section rounded-xl border border-border">
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-primary" />
+          <span className="text-[10px] font-semibold">Time Sensitive</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {!task.allDay && (
+            <input
+              type="time"
+              value={task.due ? new Date(task.due).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }) : ''}
+              onChange={e => {
+                const [h, m] = e.target.value.split(':');
+                const d = task.due ? new Date(task.due) : new Date();
+                d.setHours(Number(h), Number(m));
+                onUpdate({ due: d.toISOString(), allDay: false });
+              }}
+              className="bg-widget border border-border rounded px-1.5 py-1 text-[10px] outline-none focus:border-primary"
+            />
+          )}
+          <button
+            onClick={() => onUpdate({ allDay: !task.allDay })}
+            className={cn(
+              "px-2.5 py-1 rounded-md text-[9px] font-bold uppercase transition-all",
+              task.allDay ? "bg-primary/20 text-primary border border-primary/20" : "bg-hover text-muted-foreground border border-transparent"
+            )}
+          >
+            {task.allDay ? 'All Day' : 'Timed'}
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Tags</label>
+        <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto p-0.5">
+          {allTags.map((tag: string) => {
             const on = task.tags.includes(tag);
             return (
               <button
@@ -776,9 +1000,9 @@ function DetailPanel({
                   onUpdate({ tags: on ? task.tags.filter(x => x !== tag) : [...task.tags, tag] })
                 }
                 className={cn(
-                  'px-2 py-0.5 text-[10px] rounded-full font-mono border transition-colors',
-                  on ? 'bg-primary/15 text-primary border-primary/40'
-                    : 'border-border text-muted-foreground hover:border-primary/30'
+                  'px-2.5 py-1 text-[10px] rounded-lg font-medium border transition-all',
+                  on ? 'bg-primary/20 text-primary border-primary/40'
+                    : 'bg-section border-border text-muted-foreground hover:border-primary/40'
                 )}
               >
                 #{tag}

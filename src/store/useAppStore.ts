@@ -16,6 +16,7 @@ export interface Task {
   priority: TaskPriority;
   status: TaskStatus;
   due?: string;
+  allDay?: boolean;
   completedAt?: string;
   tags: string[];
 }
@@ -131,7 +132,7 @@ interface AppState {
   notes: Note[];
   noteFolders: NoteFolder[];
   forgeItems: ForgeItem[];
-
+  customTags: string[];
 
   // Settings
   pomoFocusMin: number;
@@ -156,7 +157,7 @@ interface AppState {
   setTaskStatus: (id: string, status: TaskStatus) => void;
   deleteTask: (id: string) => void;
 
-  // ── Log actions ────────────────────────────��──────────────────────────────
+  // ── Log actions ───────────────────────────────────────────────────────────
   log: (type: LogType, msg: string, category: string) => void;
   clearLogs: () => void;
 
@@ -190,6 +191,12 @@ interface AppState {
   toggleForgeItem: (id: string) => void;
   incrementTarget: (id: string) => void;
   reorderForgeItems: (orderedIds: string[]) => void;
+  decrementTarget: (id: string) => void;
+
+  // ── Global actions ────────────────────────────────────────────────────────
+  resetTaskData: () => void;
+  addCustomTag: (tag: string) => void;
+  removeCustomTag: (tag: string) => void;
 
   // ── Pomodoro actions ──────────────────────────────────────────────────────
   setPomoSettings: (focus: number, breakMin: number) => void;
@@ -226,7 +233,7 @@ const generateDummyCompletions = (probability: number): Record<string, boolean> 
   return completions;
 };
 
-// ─────────────────���───────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 // POMODORO TIMER (module-level)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -319,6 +326,7 @@ export const useAppStore = create<AppState>()(
       themeMode: 'dark',
       logRetentionDays: 30, // Default 30 days
       activityEvents: [],
+      customTags: ['Work', 'Personal', 'Coding', 'Design', 'QA', 'Urgent'],
 
       // Quick Access
       quickCategories: [
@@ -554,12 +562,55 @@ export const useAppStore = create<AppState>()(
         const item = get().forgeItems.find(i => i.id === id);
         if (item) get().log('forge', `Goal progress: "${item.name}" (+1)`, 'Forge');
         set((s) => ({
-          forgeItems: s.forgeItems.map((i) => (i.id === id && i.type === 'target' ? { ...i, currentCount: Math.min((i.currentCount ?? 0) + 1, i.targetCount ?? 1), updatedAt: new Date().toISOString() } : i)),
+          forgeItems: s.forgeItems.map((i) => {
+            if (i.id === id && i.type === 'target') {
+              return {
+                ...i,
+                currentCount: Math.min((i.currentCount || 0) + 1, i.targetCount || 1),
+                updatedAt: new Date().toISOString()
+              };
+            }
+            return i;
+          }),
+        }));
+      },
+      decrementTarget: (id) => {
+        set((s) => ({
+          forgeItems: s.forgeItems.map((i) => {
+            if (i.id === id && i.type === 'target') {
+              return {
+                ...i,
+                currentCount: Math.max(0, (i.currentCount || 0) - 1),
+                updatedAt: new Date().toISOString()
+              };
+            }
+            return i;
+          }),
         }));
       },
       reorderForgeItems: (orderedIds) => set((s) => ({
         forgeItems: s.forgeItems.map((i) => ({ ...i, order: orderedIds.indexOf(i.id) })),
       })),
+
+      // ── Global actions ──────────────────────────────────────────────────
+      resetTaskData: () => {
+        set({
+          tasks: [],
+          customTags: ['Work', 'Personal', 'Coding', 'Design', 'QA', 'Urgent'],
+        });
+      },
+
+      addCustomTag: (tag) => {
+        const t = tag.trim();
+        if (!t) return;
+        set((s) => ({ customTags: s.customTags.includes(t) ? s.customTags : [...s.customTags, t] }));
+      },
+
+      removeCustomTag: (tag) => {
+        set((s) => ({
+          customTags: s.customTags.filter(t => t !== tag),
+        }));
+      },
 
       // ── Pomodoro ──────────────────────────────────────────────────────────
       setPomoSettings: (focus, breakMin) => {
@@ -727,19 +778,46 @@ export const useAppStore = create<AppState>()(
 
 export function isOverdue(task: Task): boolean {
   if (!task.due || task.status === 'done') return false;
-  return new Date(task.due) < new Date();
+
+  const dueDate = new Date(task.due);
+  const now = new Date();
+
+  if (task.allDay) {
+    // For all-day tasks, compare only the date parts in local time
+    // An all-day task is only overdue if its due date is strictly before today
+    const d = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+    const n = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return d < n;
+  }
+
+  return dueDate < now;
 }
 
 export function isAtRisk(task: Task): boolean {
-  if (!task.due || task.status === 'done') return false;
-  const diffHours = (new Date(task.due).getTime() - Date.now()) / 3600000;
+  if (!task.due || task.status === 'done' || isOverdue(task)) return false;
+
+  const dueDate = new Date(task.due);
+  const now = new Date();
+
+  // At risk if due within the next 24 hours
+  const diffHours = (dueDate.getTime() - now.getTime()) / 3600000;
+
   return diffHours <= 24 && diffHours > 0;
+
 }
 
 export function effectivePriority(task: Task): TaskPriority {
+  // If explicitly done, return the original priority to avoid confusion in history
+  if (task.status === 'done') return task.priority;
+
   if (isOverdue(task)) return 'high';
-  if (isAtRisk(task)) return task.priority === 'low' ? 'medium' : task.priority;
   return task.priority;
+  // If at risk (due soon), bump priority by one level
+  if (isAtRisk(task)) {
+    if (task.priority === 'low') return 'medium';
+    if (task.priority === 'medium') return 'high';
+    return 'high';
+  }
 }
 
 export function isToday(dateStr?: string): boolean {
