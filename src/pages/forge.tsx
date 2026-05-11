@@ -1,3 +1,4 @@
+import { motion, AnimatePresence } from 'motion/react';
 import { useAppStore, type ForgeItem } from '../store/useAppStore';
 import { useState, useMemo, useEffect, useRef, memo } from 'react';
 import { Plus, X, Trash2, Flame, Pencil, Check, ChevronDown, RotateCcw, TrendingUp, TrendingDown, Award, BarChart3, GripVertical } from 'lucide-react';
@@ -39,7 +40,7 @@ function Toast({ msg, action, onAction, onClose }: { msg: string; action?: strin
 }
 
 /* ── Header ── */
-const ForgeHeader = memo(function ForgeHeader({ streak, onAdd }: { streak: number; onAdd: () => void }) {
+const ForgeHeader = memo(function ForgeHeader({ streak, onAdd, onReset }: { streak: number; onAdd: () => void; onReset: () => void }) {
     return (
         <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -58,58 +59,175 @@ const ForgeHeader = memo(function ForgeHeader({ streak, onAdd }: { streak: numbe
                     <p className="text-[11px] text-muted-foreground font-mono">Build habits. Hit targets. Stay consistent.</p>
                 </div>
             </div>
-            <button onClick={onAdd} className="bg-cyan-500 text-black px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-cyan-400 transition-all font-mono">
-                <Plus className="w-4 h-4" /> New
-            </button>
-        </div>
-    );
-});
-
-/* ── Progress Ring ── */
-const ProgressRing = memo(function ProgressRing({
-    pct, color, label, done, total
-}: {
-    pct: number; color: string; label: string; done: number; total: number;
-}) {
-    const circumference = 2 * Math.PI * 36;
-    const offset = circumference * (1 - pct / 100);
-    return (
-        <div className="group relative flex flex-col items-center gap-2">
-            <div className="relative w-20 h-20">
-                <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90">
-                    <circle cx="40" cy="40" r="36" fill="none" stroke="hsl(var(--border))" strokeWidth="6" opacity={0.3} />
-                    <circle cx="40" cy="40" r="36" fill="none" stroke={color} strokeWidth="6" strokeLinecap="round"
-                        strokeDasharray={circumference} strokeDashoffset={offset}
-                        style={{ transition: 'stroke-dashoffset 0.8s ease-out' }} />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-card/90 rounded-full">
-                    <span className="text-xs font-mono font-bold" style={{ color }}>{done}/{total}</span>
-                </div>
-                <div className="absolute inset-0 flex items-center justify-center opacity-100 group-hover:opacity-0 transition-opacity">
-                    <span className="text-lg font-bold font-mono" style={{ color }}>{pct}%</span>
-                </div>
+            <div className="flex items-center gap-2">
+                <button onClick={onReset} className="p-2.5 rounded-xl border border-border text-muted-foreground hover:text-red-400 hover:border-red-500/20 transition-all font-mono" title="Reset All Data">
+                    <RotateCcw className="w-4 h-4" />
+                </button>
+                <button onClick={onAdd} className="bg-cyan-500 text-black px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-cyan-400 transition-all font-mono">
+                    <Plus className="w-4 h-4" /> New
+                </button>
             </div>
-            <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{label}</span>
         </div>
     );
 });
 
-/* ── Today Rings ── */
-const TodayRings = memo(function TodayRings({
-    tasksDone, tasksTotal, habitsDone, habitsTotal, goalsDone, goalsTotal
+/* ── Multi-Color Progress Ring ── */
+const MultiColorHabitRing = memo(function MultiColorHabitRing({
+    items,
+    totalCount,
+    hoveredIndex,
+    onHover
 }: {
-    tasksDone: number; tasksTotal: number;
-    habitsDone: number; habitsTotal: number;
-    goalsDone: number; goalsTotal: number;
+    items: { color: string; name: string; icon: string }[];
+    totalCount: number;
+    hoveredIndex: number | null;
+    onHover: (index: number | null) => void;
 }) {
+    const circumference = 2 * Math.PI * 34;
+    const completedCount = items.length;
+
+    return (
+        <div className="relative w-44 h-44 flex items-center justify-center">
+            <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90 filter drop-shadow-sm">
+                {/* Background Ring */}
+                <circle
+                    cx="40"
+                    cy="40"
+                    r="34"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="7"
+                    className="text-border/20"
+                />
+
+                {completedCount > 0 && items.map((item, i) => {
+                    const segmentLength = (circumference / completedCount);
+                    const gap = completedCount > 1 ? 2 : 0; // Small gap between segments
+                    const offset = -i * segmentLength;
+                    const isHovered = hoveredIndex === i;
+                    const isAnyHovered = hoveredIndex !== null;
+
+                    return (
+                        <motion.circle
+                            key={`${item.name}-${i}`}
+                            cx="40"
+                            cy="40"
+                            r="34"
+                            fill="none"
+                            stroke={item.color}
+                            strokeWidth={isHovered ? 9 : 7}
+                            strokeDasharray={`${segmentLength - gap} ${circumference - (segmentLength - gap)}`}
+                            initial={{ strokeDashoffset: circumference }}
+                            animate={{
+                                strokeDashoffset: offset,
+                                opacity: isAnyHovered ? (isHovered ? 1 : 0.4) : 1,
+                                strokeWidth: isHovered ? 10 : 7
+                            }}
+                            onMouseEnter={() => onHover(i)}
+                            onMouseLeave={() => onHover(null)}
+                            transition={{ type: 'spring', stiffness: 100, damping: 20 }}
+                            className="cursor-pointer"
+                        />
+                    );
+                })}
+            </svg>
+
+            {/* Center Content */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <AnimatePresence mode="wait">
+                    {hoveredIndex !== null ? (
+                        <motion.div
+                            key="tooltip"
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -5 }}
+                            className="flex flex-col items-center"
+                        >
+                            <span className="text-sm font-bold text-foreground mb-0.5">{items[hoveredIndex].icon}</span>
+                            <span className="text-[10px] font-bold text-foreground text-center px-4 leading-tight">
+                                {items[hoveredIndex].name}
+                            </span>
+                        </motion.div>
+                    ) : (
+                        <motion.div
+                            key="stats"
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.8 }}
+                            className="flex flex-col items-center"
+                        >
+                            <span className={cn(
+                                "text-3xl font-bold font-mono tracking-tighter transition-colors duration-500",
+                                completedCount > 0 ? "text-foreground" : "text-muted-foreground/30"
+                            )}>
+                                {completedCount}<span className="text-muted-foreground/40 text-lg font-normal mx-0.5">/</span>{totalCount}
+                            </span>
+                            <span className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mt-1">
+                                {Math.round((completedCount / (totalCount || 1)) * 100)}% Mastery
+                            </span>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
+        </div>
+    );
+});
+
+/* ── Today Rings (Now Multi-Color Unified) ── */
+const TodayRings = memo(function TodayRings({
+    completedItems,
+    totalCount
+}: {
+    completedItems: { name: string; color: string; icon: string }[];
+    totalCount: number;
+}) {
+    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
     return (
         <div className="widget p-5 h-full flex flex-col">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-4">Today&apos;s Progress</span>
-            <div className="flex-1 flex items-center justify-center gap-4">
-                <ProgressRing pct={tasksTotal ? Math.round((tasksDone / tasksTotal) * 100) : 0} color="#22c55e" label="Tasks" done={tasksDone} total={tasksTotal} />
-                <ProgressRing pct={habitsTotal ? Math.round((habitsDone / habitsTotal) * 100) : 0} color="#00d4ff" label="Habits" done={habitsDone} total={habitsTotal} />
-                <ProgressRing pct={goalsTotal ? Math.round((goalsDone / goalsTotal) * 100) : 0} color="#8b5cf6" label="Goals" done={goalsDone} total={goalsTotal} />
+            <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Today&apos;s Mastery</span>
             </div>
+
+            <div className="flex-1 flex items-center justify-center -my-2">
+                <MultiColorHabitRing
+                    items={completedItems}
+                    totalCount={totalCount}
+                    hoveredIndex={hoveredIndex}
+                    onHover={setHoveredIndex}
+                />
+            </div>
+
+            {completedItems.length === 0 ? (
+                <p className="text-[10px] font-mono text-muted-foreground text-center mt-2 italic">
+                    Finish a habit to start the ring
+                </p>
+            ) : (
+                <div className="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1.5 px-2">
+                    {completedItems.slice(0, 6).map((item, i) => (
+                        <motion.div
+                            key={i}
+                            onMouseEnter={() => setHoveredIndex(i)}
+                            onMouseLeave={() => setHoveredIndex(null)}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.05 }}
+                            className={cn(
+                                "flex items-center gap-1.5 cursor-pointer transition-all",
+                                hoveredIndex !== null && hoveredIndex !== i ? "opacity-30 scale-95" : "opacity-100 scale-100"
+                            )}
+                        >
+                            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: item.color }} />
+                            <span className="text-[10px] font-mono text-muted-foreground whitespace-nowrap">{item.name}</span>
+                        </motion.div>
+                    ))}
+                    {completedItems.length > 6 && (
+                        <div className="text-[9px] font-mono text-muted-foreground/60 flex items-center">
+                            +{completedItems.length - 6} more
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 });
@@ -122,39 +240,63 @@ const WeekStrip = memo(function WeekStrip({ data }: { data: { label: string; pct
 
     return (
         <div className="widget p-5 h-full flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">This Week</span>
-                <div className="flex items-center gap-3 text-[10px] font-mono text-muted-foreground">
-                    <span>Avg: <span className="text-cyan-400">{avg}%</span></span>
-                    <span>Best: <span className="text-amber-400">{best.pct}%</span></span>
+            <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Weekly Overview</span>
+                <div className="flex items-center gap-2.5 text-[9px] font-mono text-muted-foreground">
+                    <div className="flex flex-col items-end">
+                        <span className="text-cyan-400 font-bold">{avg}% Avg</span>
+                    </div>
                 </div>
             </div>
 
-            <div className="flex items-end gap-1.5 h-16 mb-3">
+            <div className="flex-1 flex items-end gap-1.5 min-h-[80px] my-4">
                 {data.map((d, i) => (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-1.5 group">
-                        <div className="text-[9px] font-mono opacity-0 group-hover:opacity-100 transition-opacity h-4">
-                            {d.pct}%
+                    <div key={i} className="flex-1 flex flex-col items-center gap-2 group h-full justify-end">
+                        <div className="relative w-full flex-1 flex items-end justify-center">
+                            {/* Bar Background */}
+                            <div className="absolute inset-0 w-full max-w-[24px] mx-auto bg-border/20 rounded-t-sm" />
+                            {/* Bar Fill */}
+                            <motion.div
+                                initial={{ height: 0 }}
+                                animate={{ height: `${d.pct}%` }}
+                                transition={{ type: 'spring', stiffness: 100, damping: 15, delay: i * 0.05 }}
+                                className={cn(
+                                    "w-full max-w-[24px] rounded-t-sm transition-colors duration-500 relative z-10",
+                                    d.pct === 100 ? "bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.3)]" :
+                                        d.pct > 50 ? "bg-cyan-500" :
+                                            d.pct > 0 ? "bg-cyan-500/60" : "bg-transparent"
+                                )}
+                                style={{ minHeight: d.pct > 0 ? '4px' : '0' }}
+                            />
+                            {/* Tooltip on hover */}
+                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-section border border-border px-1.5 py-0.5 rounded text-[8px] font-mono opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none">
+                                {d.completed}/{d.total} Done
+                            </div>
                         </div>
-                        <div className="w-full flex items-end justify-center" style={{ height: '40px' }}>
-                            <div className={cn(
-                                "w-full max-w-[36px] rounded-t-md transition-all duration-500",
-                                d.pct === 100 ? "bg-green-500" : d.pct > 0 ? "bg-cyan-500" : "bg-border/50"
-                            )} style={{ height: `${d.pct}%`, minHeight: d.pct > 0 ? '4px' : '0' }} />
-                        </div>
-                        <span className={cn("text-[9px] font-mono", d.pct === 100 ? 'text-green-400 font-bold' : 'text-muted-foreground')}>{d.label}</span>
+                        <span className={cn(
+                            "text-[9px] font-mono transition-colors",
+                            d.label === new Date().toLocaleDateString('en-US', { weekday: 'short' }) ? "text-foreground font-bold" : "text-muted-foreground"
+                        )}>
+                            {d.label[0]}
+                        </span>
                     </div>
                 ))}
             </div>
 
-            <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground pt-2 border-t border-border/30 mt-auto">
-                <span className="flex items-center gap-1">
-                    <Award className="w-3 h-3 text-amber-400" /> {perfectDays} perfect {perfectDays === 1 ? 'day' : 'days'}
-                </span>
-                <span className="flex items-center gap-1">
-                    {avg >= 50 ? <TrendingUp className="w-3 h-3 text-green-400" /> : <TrendingDown className="w-3 h-3 text-red-400" />}
-                    <span className={avg >= 50 ? 'text-green-400' : 'text-red-400'}>{avg >= 50 ? 'On track' : 'Needs work'}</span>
-                </span>
+            <div className="grid grid-cols-2 gap-2 pt-3 border-t border-border/30 mt-auto">
+                <div className="flex flex-col">
+                    <span className="text-[8px] font-mono text-muted-foreground uppercase leading-none mb-1">Peak</span>
+                    <span className="text-[11px] font-mono font-bold text-amber-400 capitalize">{best.pct}% Mastery</span>
+                </div>
+                <div className="flex flex-col items-end">
+                    <span className="text-[8px] font-mono text-muted-foreground uppercase leading-none mb-1">Status</span>
+                    <div className="flex items-center gap-1">
+                        {avg >= 50 ? <TrendingUp className="w-3 h-3 text-green-400" /> : <TrendingDown className="w-3 h-3 text-red-400" />}
+                        <span className={cn("text-[10px] font-mono font-bold", avg >= 70 ? "text-green-400" : avg >= 40 ? "text-cyan-400" : "text-red-400")}>
+                            {avg >= 70 ? 'Refining' : avg >= 40 ? 'Heating' : 'Cold'}
+                        </span>
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -164,54 +306,115 @@ const WeekStrip = memo(function WeekStrip({ data }: { data: { label: string; pct
 const GoalsSummary = memo(function GoalsSummary({ targetItems }: { targetItems: ForgeItem[] }) {
     const active = targetItems.length;
     const completed = targetItems.filter(i => i.targetCount && (i.currentCount || 0) >= i.targetCount).length;
-    const avgPct = active > 0 ? Math.round(targetItems.reduce((s, i) => s + Math.round(((i.currentCount || 0) / (i.targetCount || 1)) * 100), 0) / active) : 0;
+    const avgPct = active > 0 ? Math.round(targetItems.reduce((s, i) => s + Math.min(100, Math.round(((i.currentCount || 0) / (i.targetCount || 1)) * 100)), 0) / active) : 0;
+
+    const nearCompletion = targetItems.filter(i => {
+        const pct = Math.round(((i.currentCount || 0) / (i.targetCount || 1)) * 100);
+        return pct >= 80 && pct < 100;
+    });
 
     const inProgress = targetItems.filter(i => {
         const pct = Math.round(((i.currentCount || 0) / (i.targetCount || 1)) * 100);
         return pct < 100;
     });
 
-    let nextMilestoneLabel = '';
+    let topGoal = null;
     if (inProgress.length > 0) {
-        const sorted = [...inProgress].sort((a, b) => {
+        topGoal = [...inProgress].sort((a, b) => {
             const pa = ((a.currentCount || 0) / (a.targetCount || 1));
             const pb = ((b.currentCount || 0) / (b.targetCount || 1));
             return pb - pa;
-        });
-        const top = sorted[0];
-        const pct = Math.round(((top.currentCount || 0) / (top.targetCount || 1)) * 100);
-        const next = [25, 50, 75, 100].find(m => m > pct) || 100;
-        nextMilestoneLabel = `${top.name} → ${next}%`;
+        })[0];
     }
+
+    const circumference = 2 * Math.PI * 28;
+    const strokeDashoffset = circumference - (avgPct / 100) * circumference;
 
     return (
         <div className="widget p-5 h-full flex flex-col">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-4">🎯 Goals</span>
-            <div className="flex-1 flex flex-col justify-center gap-4">
-                <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground font-mono">Active</span>
-                    <span className="text-sm font-bold font-mono text-violet-400">{active}</span>
-                </div>
-                <div>
-                    <div className="h-2 bg-section rounded-full overflow-hidden mb-1.5">
-                        <div className="h-full rounded-full bg-violet-500 transition-all duration-700" style={{ width: `${avgPct}%` }} />
-                    </div>
-                    <div className="flex justify-between text-[10px] font-mono text-muted-foreground">
-                        <span>Total Progress</span>
-                        <span className="text-violet-400">{avgPct}%</span>
-                    </div>
-                </div>
-                <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground font-mono">Completed</span>
-                    <span className="text-sm font-bold font-mono text-green-400">{completed} 🏆</span>
-                </div>
-                {nextMilestoneLabel && (
-                    <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground font-mono">Next</span>
-                        <span className="text-[10px] font-mono text-violet-300 truncate max-w-[140px]" title={nextMilestoneLabel}>{nextMilestoneLabel}</span>
-                    </div>
-                )}
+            <div className="flex items-center justify-between mb-4">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <Award className="w-3 h-3" /> Target Mastery
+                </span>
+                <span className="text-[10px] font-mono text-violet-400 font-bold">{completed} Done</span>
             </div>
+
+            <div className="flex-1 flex gap-5 items-center">
+                {/* Radial Progress */}
+                <div className="relative w-24 h-24 shrink-0">
+                    <svg viewBox="0 0 64 64" className="w-full h-full -rotate-90">
+                        <circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" strokeWidth="5" className="text-border/20" />
+                        <motion.circle
+                            cx="32" cy="32" r="28" fill="none" stroke="url(#goalGradient)" strokeWidth="5"
+                            strokeDasharray={circumference}
+                            initial={{ strokeDashoffset: circumference }}
+                            animate={{ strokeDashoffset }}
+                            transition={{ duration: 1.5, ease: "easeOut" }}
+                            strokeLinecap="round"
+                        />
+                        <defs>
+                            <linearGradient id="goalGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stopColor="#8b5cf6" />
+                                <stop offset="100%" stopColor="#d946ef" />
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <span className="text-lg font-bold font-mono tracking-tighter leading-none">{avgPct}%</span>
+                        <span className="text-[7px] font-mono text-muted-foreground uppercase">Avg</span>
+                    </div>
+                </div>
+
+                {/* Stats Grid */}
+                <div className="flex-1 space-y-3">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-muted-foreground font-mono">Active</span>
+                        <span className="text-xs font-bold font-mono text-foreground">{active}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                            <span className="text-[10px] text-muted-foreground font-mono">Closing In</span>
+                            <span className="text-[8px] text-muted-foreground/60 font-mono italic">Near 100%</span>
+                        </div>
+                        <span className={cn("text-xs font-bold font-mono", nearCompletion.length > 0 ? "text-cyan-400" : "text-muted-foreground/40")}>
+                            {nearCompletion.length}
+                        </span>
+                    </div>
+                    <div className="pt-2 border-t border-border/20">
+                        <div className="flex items-center justify-between mb-1">
+                            <span className="text-[9px] text-muted-foreground font-mono">Momentum</span>
+                            <TrendingUp className="w-2.5 h-2.5 text-green-500" />
+                        </div>
+                        <div className="text-[9px] font-mono text-violet-300 font-medium line-clamp-1 h-3 leading-none italic">
+                            {completed > 0 ? `${completed} Mastered 🏆` : active > 0 ? "Building heat..." : "Set a goal"}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Bottom Milestone */}
+            {topGoal && (
+                <div className="mt-4 bg-section/30 rounded-lg p-3 border border-border/10">
+                    <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[9px] font-mono text-muted-foreground uppercase flex items-center gap-1.5">
+                            <BarChart3 className="w-2.5 h-2.5" /> Next Achievement
+                        </span>
+                        <span className="text-[9px] font-bold font-mono text-violet-400">
+                            {Math.round(((topGoal.currentCount || 0) / (topGoal.targetCount || 1)) * 100)}%
+                        </span>
+                    </div>
+                    <div className="text-[11px] font-medium truncate mb-2">
+                        {topGoal.icon} {topGoal.name}
+                    </div>
+                    <div className="h-1 bg-border/20 rounded-full overflow-hidden">
+                        <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${((topGoal.currentCount || 0) / (topGoal.targetCount || 1)) * 100}%` }}
+                            className="h-full bg-violet-500 rounded-full"
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 });
@@ -323,6 +526,7 @@ const HabitCard = memo(function HabitCard({
             {/* Main row */}
             <div className="flex items-center gap-3 px-4 py-3">
                 <GripVertical className="w-3 h-3 text-muted-foreground/20 shrink-0 cursor-grab" />
+                <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
                 <button
                     onClick={handleToggle}
                     className={cn(
@@ -436,25 +640,54 @@ const Timeline = memo(function Timeline({ forgeItems }: { forgeItems: ForgeItem[
     const [days, setDays] = useState<30 | 90>(30);
 
     const data = useMemo(() => {
-        const result: { date: string; label: string; habitsPct: number; goalsAvg: number; habitsDone: number; habitsTotal: number }[] = [];
-        const dailies = forgeItems.filter(i => i.type === 'daily');
-        const targets = forgeItems.filter(i => i.type === 'target');
+        const result: { date: string; label: string; habitsPct: number; goalsAvg: number; habitsDone: number; habitsTotal: number; goalsDone: number; goalsTotal: number }[] = [];
+        const dailyItems = forgeItems.filter(i => i.type === 'daily');
+        const targetItems = forgeItems.filter(i => i.type === 'target');
+        const todayStr = new Date().toISOString().split('T')[0];
 
         for (let i = days - 1; i >= 0; i--) {
             const d = new Date(); d.setDate(d.getDate() - i);
             const dateStr = d.toISOString().split('T')[0];
             const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-            const habitsDone = dailies.filter(item => item.completions[dateStr]).length;
-            const habitsTotal = dailies.length;
+            const habitsDone = dailyItems.filter(item => item.completions[dateStr]).length;
+            const habitsTotal = dailyItems.length;
             const habitsPct = habitsTotal ? Math.round((habitsDone / habitsTotal) * 100) : 0;
 
-            const goalsAvg = targets.length ? Math.round(targets.reduce((s, item) => {
-                const pct = Math.round(((item.currentCount || 0) / (item.targetCount || 1)) * 100);
-                return s + pct;
-            }, 0) / targets.length) : 0;
+            let goalsDoneCount = 0;
+            const goalsAvg = targetItems.length ? Math.round(targetItems.reduce((s, item) => {
+                // Find latest count in history <= dateStr
+                let countAtDate = 0;
+                if (item.history) {
+                    const sortedHistoryDates = Object.keys(item.history).filter(date => date <= dateStr).sort();
+                    if (sortedHistoryDates.length > 0) {
+                        countAtDate = item.history[sortedHistoryDates[sortedHistoryDates.length - 1]];
+                    }
+                }
 
-            result.push({ date: dateStr, label, habitsPct, goalsAvg, habitsDone, habitsTotal });
+                // Fallback for current day if not in history yet
+                if (dateStr === todayStr && countAtDate === 0) {
+                    countAtDate = item.currentCount || 0;
+                }
+
+                if (item.targetCount && countAtDate >= item.targetCount) {
+                    goalsDoneCount++;
+                }
+
+                const pct = Math.round((countAtDate / (item.targetCount || 1)) * 100);
+                return s + pct;
+            }, 0) / targetItems.length) : 0;
+
+            result.push({
+                date: dateStr,
+                label,
+                habitsPct,
+                goalsAvg,
+                habitsDone,
+                habitsTotal,
+                goalsDone: goalsDoneCount,
+                goalsTotal: targetItems.length
+            });
         }
         return result;
     }, [forgeItems, days]);
@@ -488,13 +721,13 @@ const Timeline = memo(function Timeline({ forgeItems }: { forgeItems: ForgeItem[
                                     <div className="bg-card border border-border rounded-lg px-3 py-2 shadow-xl text-xs space-y-1">
                                         <div className="font-mono text-muted-foreground text-[10px]">{p.label}</div>
                                         <div className="text-cyan-400 font-mono">Habits: {p.habitsDone}/{p.habitsTotal} ({p.habitsPct}%)</div>
-                                        <div className="text-violet-400 font-mono">Goals avg: {p.goalsAvg}%</div>
+                                        <div className="text-violet-400 font-mono">Goal Progress: {p.goalsAvg}%</div>
                                     </div>
                                 );
                             }}
                         />
                         <Area type="monotone" dataKey="habitsPct" stroke="#00d4ff" strokeWidth={2} fill="url(#forgeHabitGradient)" />
-                        <Line type="monotone" dataKey="goalsAvg" stroke="#8b5cf6" strokeWidth={2} strokeDasharray="4 4" dot={false} />
+                        <Line type="monotone" dataKey="goalsAvg" stroke="#8b5cf6" strokeWidth={2} dot={false} />
                     </AreaChart>
                 </ResponsiveContainer>
             </div>
@@ -503,9 +736,9 @@ const Timeline = memo(function Timeline({ forgeItems }: { forgeItems: ForgeItem[
 });
 
 /* ── Slide-over Panel ── */
-function AddPanel({ open, onClose, editingId, onSave }: {
+function AddPanel({ open, onClose, editingId, onSave, forgeItems }: {
     open: boolean; onClose: () => void; editingId: string | null;
-    onSave: (data: any) => void;
+    onSave: (data: any) => void; forgeItems: ForgeItem[];
 }) {
     const [name, setName] = useState('');
     const [icon, setIcon] = useState('🏃');
@@ -515,12 +748,44 @@ function AddPanel({ open, onClose, editingId, onSave }: {
     const [unit, setUnit] = useState('times');
     const [showTemplates, setShowTemplates] = useState(false);
     const [error, setError] = useState('');
+    const [colorWarning, setColorWarning] = useState('');
 
     useEffect(() => {
-        if (open) document.body.style.overflow = 'hidden';
-        else document.body.style.overflow = '';
+        if (open) {
+            document.body.style.overflow = 'hidden';
+            if (editingId) {
+                const item = forgeItems.find(i => i.id === editingId);
+                if (item) {
+                    setName(item.name); setIcon(item.icon); setColor(item.color);
+                    setType(item.type); setTarget(item.targetCount || 10); setUnit(item.unit || 'times');
+                }
+            } else {
+                // Reset for new item
+                setName(''); setIcon('🏃'); setType('daily');
+                // Suggest a unique color
+                const usedColors = new Set(forgeItems.map(i => i.color));
+                const availableColor = ITEM_COLORS.find(c => !usedColors.has(c)) || ITEM_COLORS[forgeItems.length % ITEM_COLORS.length];
+                setColor(availableColor);
+            }
+        }
+        else {
+            document.body.style.overflow = '';
+            setColorWarning('');
+        }
         return () => { document.body.style.overflow = ''; };
-    }, [open]);
+    }, [open, editingId, forgeItems]);
+
+    // Check color uniqueness
+    useEffect(() => {
+        if (!open) return;
+        const colorLower = color.toLowerCase();
+        const conflict = forgeItems.find(i => i.id !== editingId && i.color.toLowerCase() === colorLower);
+        if (conflict) {
+            setColorWarning(conflict.name);
+        } else {
+            setColorWarning('');
+        }
+    }, [color, forgeItems, editingId, open]);
 
     const handleSave = () => {
         if (!name.trim()) { setError('Name is required'); return; }
@@ -540,12 +805,32 @@ function AddPanel({ open, onClose, editingId, onSave }: {
             <div className={cn("fixed inset-0 bg-black/50 z-50 transition-opacity duration-300", open ? "opacity-100" : "opacity-0 pointer-events-none")} onClick={onClose} />
             <div className={cn("fixed inset-y-0 right-0 w-80 bg-card border-l border-border z-50 transition-transform duration-300 ease-out flex flex-col", open ? "translate-x-0" : "translate-x-full")}>
                 <div className="flex items-center justify-between p-5 border-b border-border">
-                    <h3 className="text-sm font-semibold">{editingId ? 'Edit' : 'New'} Item</h3>
-                    <button onClick={onClose} className="p-1 hover:bg-section rounded-lg transition-all"><X className="w-4 h-4" /></button>
+                    <h3 className="text-sm font-semibold tracking-tight">{editingId ? 'Edit' : 'New'} Item</h3>
+                    <button onClick={onClose} className="p-1.5 hover:bg-section rounded-lg transition-all"><X className="w-4 h-4" /></button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-5 space-y-4">
+
+                <div className="flex-1 overflow-y-auto p-5 space-y-5 custom-scrollbar">
+                    {colorWarning && (
+                        <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3"
+                        >
+                            <div className="flex gap-2">
+                                <RotateCcw className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                                <div className="space-y-1">
+                                    <p className="text-[10px] font-bold text-amber-500 font-mono uppercase leading-none">Color Conflict</p>
+                                    <p className="text-[9px] text-muted-foreground font-mono leading-tight">
+                                        This color is already used by <span className="text-amber-400 font-bold">"{colorWarning}"</span>.
+                                        Please use a different color for clarity.
+                                    </p>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+
                     {!editingId && (
-                        <button onClick={() => setShowTemplates(!showTemplates)} className="w-full text-[10px] font-mono text-muted-foreground hover:text-foreground bg-section rounded-lg py-2.5 transition-all">
+                        <button onClick={() => setShowTemplates(!showTemplates)} className="w-full text-[10px] font-mono text-muted-foreground hover:text-foreground bg-section rounded-lg py-2.5 transition-all border border-border/10">
                             {showTemplates ? 'Hide' : 'Use'} Templates
                         </button>
                     )}
@@ -560,28 +845,76 @@ function AddPanel({ open, onClose, editingId, onSave }: {
                             ))}
                         </div>
                     )}
-                    <div>
-                        <label className="text-[10px] font-mono text-muted-foreground mb-1.5 block">Name</label>
-                        <input value={name} onChange={e => { setName(e.target.value); setError(''); }}
-                            className={cn("w-full bg-section border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-cyan-500 transition-colors", error ? 'border-red-500' : 'border-border')}
-                            placeholder="e.g., Morning Run" />
-                        {error && <p className="text-[10px] text-red-400 font-mono mt-1">{error}</p>}
-                    </div>
-                    <div className="flex gap-2">
-                        <button onClick={() => setType('daily')} className={cn("flex-1 py-2.5 rounded-lg text-[10px] font-mono border transition-all", type === 'daily' ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'border-border text-muted-foreground')}>📋 Daily</button>
-                        <button onClick={() => setType('target')} className={cn("flex-1 py-2.5 rounded-lg text-[10px] font-mono border transition-all", type === 'target' ? 'bg-violet-500/10 border-violet-500/30 text-violet-400' : 'border-border text-muted-foreground')}>🎯 Target</button>
-                    </div>
-                    {type === 'target' && (
-                        <div className="grid grid-cols-2 gap-2">
-                            <div><label className="text-[10px] font-mono text-muted-foreground mb-1.5 block">Target</label><input type="number" value={target} onChange={e => setTarget(Math.max(1, +e.target.value))} className="w-full bg-section border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-cyan-500" /></div>
-                            <div><label className="text-[10px] font-mono text-muted-foreground mb-1.5 block">Unit</label><input value={unit} onChange={e => setUnit(e.target.value)} className="w-full bg-section border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-cyan-500" /></div>
+
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-[10px] font-mono text-muted-foreground mb-1.5 block">Name</label>
+                            <input value={name} onChange={e => { setName(e.target.value); setError(''); }}
+                                className={cn("w-full bg-section border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-cyan-500 transition-colors", error ? 'border-red-500' : 'border-border')}
+                                placeholder="e.g., Morning Run" />
+                            {error && <p className="text-[10px] text-red-400 font-mono mt-1">{error}</p>}
                         </div>
-                    )}
-                    <div><label className="text-[10px] font-mono text-muted-foreground mb-1.5 block">Icon</label><div className="flex gap-1.5 flex-wrap">{ITEM_ICONS.map(ic => <button key={ic} onClick={() => setIcon(ic)} className={cn("w-8 h-8 rounded-lg text-sm transition-all", icon === ic && "bg-cyan-500/10 ring-1 ring-cyan-500/30")}>{ic}</button>)}</div></div>
-                    <div><label className="text-[10px] font-mono text-muted-foreground mb-1.5 block">Color</label><div className="flex gap-2">{ITEM_COLORS.map(c => <button key={c} onClick={() => setColor(c)} className={cn("w-7 h-7 rounded-full transition-transform", color === c && "ring-2 ring-white scale-110")} style={{ background: c }} />)}</div></div>
+
+                        <div className="flex gap-2">
+                            <button onClick={() => setType('daily')} className={cn("flex-1 py-2.5 rounded-lg text-[10px] font-mono border transition-all", type === 'daily' ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'border-border text-muted-foreground')}>📋 Daily</button>
+                            <button onClick={() => setType('target')} className={cn("flex-1 py-2.5 rounded-lg text-[10px] font-mono border transition-all", type === 'target' ? 'bg-violet-500/10 border-violet-500/30 text-violet-400' : 'border-border text-muted-foreground')}>🎯 Target</button>
+                        </div>
+
+                        {type === 'target' && (
+                            <div className="grid grid-cols-2 gap-2">
+                                <div><label className="text-[10px] font-mono text-muted-foreground mb-1.5 block">Target</label><input type="number" value={target} onChange={e => setTarget(Math.max(1, +e.target.value))} className="w-full bg-section border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-cyan-500" /></div>
+                                <div><label className="text-[10px] font-mono text-muted-foreground mb-1.5 block">Unit</label><input value={unit} onChange={e => setUnit(e.target.value)} className="w-full bg-section border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-cyan-500" /></div>
+                            </div>
+                        )}
+
+                        <div><label className="text-[10px] font-mono text-muted-foreground mb-1.5 block">Icon</label><div className="flex gap-1.5 flex-wrap">{ITEM_ICONS.map(ic => <button key={ic} onClick={() => setIcon(ic)} className={cn("w-8 h-8 rounded-lg text-sm transition-all", icon === ic && "bg-cyan-500/10 ring-1 ring-cyan-500/30")}>{ic}</button>)}</div></div>
+
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-mono text-muted-foreground block">Identity Color</label>
+                            <div className="flex gap-2.5 flex-wrap bg-section/30 p-3 rounded-xl border border-border/20">
+                                {ITEM_COLORS.map(c => (
+                                    <button
+                                        key={c}
+                                        onClick={() => setColor(c)}
+                                        className={cn("w-7 h-7 rounded-full transition-all hover:scale-110", color === c && "ring-2 ring-white scale-110 shadow-lg")}
+                                        style={{ background: c }}
+                                    />
+                                ))}
+
+                                <div className="w-full pt-2 flex items-center justify-between border-t border-border/10">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-4 h-4 rounded-full border border-border" style={{ backgroundColor: color }} />
+                                        <span className="text-[10px] font-mono text-muted-foreground uppercase">{color}</span>
+                                    </div>
+                                    <label className="relative flex items-center gap-1.5 px-3 py-1.5 bg-card border border-border rounded-lg hover:border-cyan-500/50 cursor-pointer transition-all shadow-sm">
+                                        <Plus className="w-3 h-3 text-cyan-400" />
+                                        <span className="text-[9px] font-mono font-bold uppercase">Custom Color</span>
+                                        <input
+                                            type="color"
+                                            value={color}
+                                            onChange={e => setColor(e.target.value)}
+                                            className="absolute inset-0 opacity-0 cursor-pointer"
+                                        />
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+
                 <div className="p-5 border-t border-border">
-                    <button onClick={handleSave} className="w-full bg-cyan-500 text-black py-3 rounded-xl text-xs font-bold font-mono hover:bg-cyan-400 transition-all">{editingId ? 'Save Changes' : 'Create Item'}</button>
+                    <button
+                        onClick={handleSave}
+                        disabled={!!colorWarning}
+                        className={cn(
+                            "w-full py-3 rounded-xl text-xs font-bold font-mono transition-all",
+                            colorWarning
+                                ? "bg-muted text-muted-foreground cursor-not-allowed opacity-50"
+                                : "bg-cyan-500 text-black hover:bg-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.2)]"
+                        )}
+                    >
+                        {colorWarning ? 'Resolve Conflict' : (editingId ? 'Save Changes' : 'Create Item')}
+                    </button>
                 </div>
             </div>
         </>
@@ -591,7 +924,6 @@ function AddPanel({ open, onClose, editingId, onSave }: {
 /* ── Main Page ── */
 export default function ForgePage() {
     const { forgeItems, addForgeItem, updateForgeItem, deleteForgeItem, toggleForgeItem, incrementTarget, decrementTarget, reorderForgeItems } = useAppStore();
-    const tasks = useAppStore(s => s.tasks);
     const [panelOpen, setPanelOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [showDelete, setShowDelete] = useState<string | null>(null);
@@ -604,15 +936,22 @@ export default function ForgePage() {
     const dailyItems = forgeItems.filter(i => i.type === 'daily').sort((a, b) => a.order - b.order);
     const targetItems = forgeItems.filter(i => i.type === 'target').sort((a, b) => a.order - b.order);
 
-    // Stats for rings
-    const tasksDoneToday = tasks.filter(t => t.status === 'done' && isToday(t.completedAt)).length;
-    const tasksTotal = tasks.length;
+    // Stats for ring and summaries
     const habitsDone = dailyItems.filter(i => i.completions[todayStr]).length;
     const habitsTotal = dailyItems.length;
     const goalsDone = targetItems.filter(i => i.targetCount && (i.currentCount || 0) >= i.targetCount).length;
     const goalsTotal = targetItems.length;
 
-    // Week data
+    // Unified completion data for the multi-color ring (Habits ONLY)
+    const completedItems = useMemo(() => {
+        return dailyItems.filter(i => i.completions[todayStr]).map(item => ({
+            name: item.name,
+            color: item.color,
+            icon: item.icon
+        }));
+    }, [dailyItems, todayStr]);
+
+    // Weekly summary still uses daily items
     const weekData = useMemo(() => {
         const days: { label: string; pct: number; completed: number; total: number }[] = [];
         const dailies = forgeItems.filter(i => i.type === 'daily');
@@ -666,7 +1005,8 @@ export default function ForgePage() {
 
     // Reset
     const handleReset = () => {
-        useAppStore.setState({ forgeItems: [] });
+        const { resetForge } = useAppStore.getState();
+        resetForge();
         useAppStore.setState({ activityEvents: [] });
         useAppStore.setState((state) => ({
             logs: state.logs.filter(l => !['forge', 'habit', 'goal'].includes(l.type))
@@ -679,18 +1019,11 @@ export default function ForgePage() {
         <div className="space-y-5 max-w-5xl mx-auto">
             {toast && <Toast msg={toast.msg} action={toast.action} onAction={toast.onAction} onClose={() => setToast(null)} />}
 
-            <ForgeHeader streak={dailyItems.length > 0 ? Math.max(...dailyItems.map(i => i.streak)) : 0} onAdd={openAdd} />
+            <ForgeHeader streak={dailyItems.length > 0 ? Math.max(...dailyItems.map(i => i.streak)) : 0} onAdd={openAdd} onReset={() => setResetStep(1)} />
 
-            {/* Top row: 3 equal widgets */}
+            {/* Top row: Unified mastery ring and summaries */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <TodayRings
-                    tasksDone={tasksDoneToday}
-                    tasksTotal={tasksTotal}
-                    habitsDone={habitsDone}
-                    habitsTotal={habitsTotal}
-                    goalsDone={goalsDone}
-                    goalsTotal={goalsTotal}
-                />
+                <TodayRings completedItems={completedItems} totalCount={dailyItems.length} />
                 <WeekStrip data={weekData} />
                 <GoalsSummary targetItems={targetItems} />
             </div>
@@ -715,26 +1048,28 @@ export default function ForgePage() {
                             )}
                         </div>
                     </div>
-                    <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-                        {dailyItems.length === 0 && (
-                            <div className="widget py-12 text-center space-y-3">
-                                <div className="text-4xl">📋</div>
-                                <p className="text-sm text-muted-foreground">No habits yet</p>
-                                <button onClick={openAdd} className="text-xs text-cyan-400 hover:text-cyan-300 font-mono">Create your first habit →</button>
-                            </div>
-                        )}
-                        {dailyItems.map(item => (
-                            <HabitCard key={item.id} item={item} done={!!item.completions[todayStr]}
-                                onToggle={() => toggleForgeItem(item.id)}
-                                onEdit={() => openEdit(item)}
-                                onDelete={() => setShowDelete(item.id)}
-                                onDragStart={() => handleDragStart(item.id)}
-                                onDragEnter={() => handleDragEnter(item.id)}
-                                onDragEnd={handleDragEnd}
-                                isDragging={draggingId === item.id}
-                                isDragOver={dragOverId === item.id}
-                            />
-                        ))}
+                    <div className="bg-widget border border-border rounded-xl p-3">
+                        <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                            {dailyItems.length === 0 && (
+                                <div className="py-12 text-center space-y-3">
+                                    <div className="text-4xl">📋</div>
+                                    <p className="text-sm text-muted-foreground">No habits yet</p>
+                                    <button onClick={openAdd} className="text-xs text-cyan-400 hover:text-cyan-300 font-mono">Create your first habit →</button>
+                                </div>
+                            )}
+                            {dailyItems.map(item => (
+                                <HabitCard key={item.id} item={item} done={!!item.completions[todayStr]}
+                                    onToggle={() => toggleForgeItem(item.id)}
+                                    onEdit={() => openEdit(item)}
+                                    onDelete={() => setShowDelete(item.id)}
+                                    onDragStart={() => handleDragStart(item.id)}
+                                    onDragEnter={() => handleDragEnter(item.id)}
+                                    onDragEnd={handleDragEnd}
+                                    isDragging={draggingId === item.id}
+                                    isDragOver={dragOverId === item.id}
+                                />
+                            ))}
+                        </div>
                     </div>
                 </div>
 
@@ -744,22 +1079,24 @@ export default function ForgePage() {
                         <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Goals</span>
                         <span className="text-[9px] font-mono text-muted-foreground">{targetItems.length} active</span>
                     </div>
-                    <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-                        {targetItems.length === 0 && (
-                            <div className="widget py-12 text-center space-y-3">
-                                <div className="text-4xl">🎯</div>
-                                <p className="text-sm text-muted-foreground">No goals yet</p>
-                                <button onClick={openAdd} className="text-xs text-violet-400 hover:text-violet-300 font-mono">Set your first goal →</button>
-                            </div>
-                        )}
-                        {targetItems.map(item => (
-                            <GoalCard key={item.id} item={item}
-                                onIncrement={() => incrementTarget(item.id)}
-                                onDecrement={() => decrementTarget(item.id)}
-                                onEdit={() => openEdit(item)}
-                                onDelete={() => setShowDelete(item.id)}
-                            />
-                        ))}
+                    <div className="bg-widget border border-border rounded-xl p-3">
+                        <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                            {targetItems.length === 0 && (
+                                <div className="py-12 text-center space-y-3">
+                                    <div className="text-4xl">🎯</div>
+                                    <p className="text-sm text-muted-foreground">No goals yet</p>
+                                    <button onClick={openAdd} className="text-xs text-violet-400 hover:text-violet-300 font-mono">Set your first goal →</button>
+                                </div>
+                            )}
+                            {targetItems.map(item => (
+                                <GoalCard key={item.id} item={item}
+                                    onIncrement={() => incrementTarget(item.id)}
+                                    onDecrement={() => decrementTarget(item.id)}
+                                    onEdit={() => openEdit(item)}
+                                    onDelete={() => setShowDelete(item.id)}
+                                />
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -767,15 +1104,8 @@ export default function ForgePage() {
             {/* Timeline */}
             <Timeline forgeItems={forgeItems} />
 
-            {/* Reset */}
-            <div className="flex justify-center pt-2 pb-4">
-                <button onClick={() => setResetStep(1)} className="text-[10px] font-mono text-muted-foreground hover:text-red-400 transition-all flex items-center gap-1.5">
-                    <RotateCcw className="w-3 h-3" /> Reset All Forge Data
-                </button>
-            </div>
-
             {/* Slide-over panel */}
-            <AddPanel open={panelOpen} onClose={() => setPanelOpen(false)} editingId={editingId} onSave={handleSave} />
+            <AddPanel open={panelOpen} onClose={() => setPanelOpen(false)} editingId={editingId} onSave={handleSave} forgeItems={forgeItems} />
 
             {/* Delete confirmation */}
             {showDelete && (

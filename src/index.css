@@ -31,6 +31,32 @@
   --radius: 0.5rem;
 }
 
+/* Custom Simple Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #14b8a6;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #14b8a6;
+  opacity: 0.8;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #14b8a6 transparent;
+}
+
 * {
   border-color: var(--color-border);
 }

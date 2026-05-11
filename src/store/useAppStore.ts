@@ -108,6 +108,7 @@ export interface ForgeItem {
   streak: number;
   bestStreak: number;
   completions: Record<string, boolean>;
+  history?: Record<string, number>;
   targetCount?: number;
   currentCount?: number;
   unit?: string;
@@ -192,6 +193,7 @@ interface AppState {
   incrementTarget: (id: string) => void;
   reorderForgeItems: (orderedIds: string[]) => void;
   decrementTarget: (id: string) => void;
+  resetForge: () => void;
 
   // ── Global actions ────────────────────────────────────────────────────────
   resetTaskData: () => void;
@@ -521,9 +523,10 @@ export const useAppStore = create<AppState>()(
 
       // ── Forge ─────────────────────────────────────────────────────────────
       addForgeItem: (item) => {
-        const fi: ForgeItem = { ...item, id: generateId(), streak: 0, bestStreak: 0, completions: {}, currentCount: 0, order: get().forgeItems.length, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+        const fi: ForgeItem = { ...item, id: generateId(), streak: 0, bestStreak: 0, completions: {}, history: {}, currentCount: 0, order: get().forgeItems.length, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
         set((s) => ({ forgeItems: [...s.forgeItems, fi] }));
         get().log('forge', `Habit "${fi.name}" forged`, 'Forge');
+        get().logActivity('forge', 'habit_created', { habitId: fi.id, type: fi.type });
       },
       updateForgeItem: (id, patch) => {
         const fi = get().forgeItems.find(i => i.id === id);
@@ -559,34 +562,47 @@ export const useAppStore = create<AppState>()(
         }
       },
       incrementTarget: (id) => {
+        const today = new Date().toISOString().split('T')[0];
         const item = get().forgeItems.find(i => i.id === id);
         if (item) get().log('forge', `Goal progress: "${item.name}" (+1)`, 'Forge');
         set((s) => ({
           forgeItems: s.forgeItems.map((i) => {
             if (i.id === id && i.type === 'target') {
+              const newCount = Math.min((i.currentCount || 0) + 1, i.targetCount || 1);
               return {
                 ...i,
-                currentCount: Math.min((i.currentCount || 0) + 1, i.targetCount || 1),
+                currentCount: newCount,
+                history: { ...(i.history || {}), [today]: newCount },
                 updatedAt: new Date().toISOString()
               };
             }
             return i;
           }),
         }));
+        get().logActivity('forge', 'target_incremented', { habitId: id });
       },
       decrementTarget: (id) => {
+        const today = new Date().toISOString().split('T')[0];
         set((s) => ({
           forgeItems: s.forgeItems.map((i) => {
             if (i.id === id && i.type === 'target') {
+              const newCount = Math.max(0, (i.currentCount || 0) - 1);
               return {
                 ...i,
-                currentCount: Math.max(0, (i.currentCount || 0) - 1),
+                currentCount: newCount,
+                history: { ...(i.history || {}), [today]: newCount },
                 updatedAt: new Date().toISOString()
               };
             }
             return i;
           }),
         }));
+        get().logActivity('forge', 'target_decremented', { habitId: id });
+      },
+      resetForge: () => {
+        set({ forgeItems: [] });
+        get().log('forge', 'All Forge data reset', 'Forge');
+        get().logActivity('forge', 'data_reset');
       },
       reorderForgeItems: (orderedIds) => set((s) => ({
         forgeItems: s.forgeItems.map((i) => ({ ...i, order: orderedIds.indexOf(i.id) })),
@@ -743,13 +759,33 @@ export const useAppStore = create<AppState>()(
           useAppStore.setState({ notes: migratedNotes });
         }
 
-        // Inject dummy completions for Forge if missing
+        // Inject dummy completions and history for Forge if missing
         if (state.forgeItems && state.forgeItems.length > 0) {
           const totalCompletions = state.forgeItems.reduce((acc: number, item) => acc + Object.keys(item.completions ?? {}).length, 0);
-          if (totalCompletions === 0) {
+          const needsHistory = state.forgeItems.some(item => item.type === 'target' && !item.history);
+
+          if (totalCompletions === 0 || needsHistory) {
+            const today = new Date().toISOString().split('T')[0];
             const newForgeItems = state.forgeItems.map((item) => {
-              if (item.type === 'daily') return { ...item, completions: generateDummyCompletions(0.5) };
-              return item;
+              const updatedItem = { ...item };
+              if (item.type === 'daily' && totalCompletions === 0) {
+                updatedItem.completions = generateDummyCompletions(0.5);
+              }
+              if (item.type === 'target' && !item.history) {
+                // Seeding history with some realistic mock values if it's one of the seeds
+                const history: Record<string, number> = {};
+                const current = item.currentCount || 0;
+                for (let i = 0; i < 30; i++) {
+                  const d = new Date(); d.setDate(d.getDate() - i);
+                  const dateStr = d.toISOString().split('T')[0];
+                  // Randomly distributed progress
+                  const val = Math.max(0, Math.round(current * (1 - (i / 40) - Math.random() * 0.1)));
+                  history[dateStr] = val;
+                }
+                history[today] = current;
+                updatedItem.history = history;
+              }
+              return updatedItem;
             });
             useAppStore.setState({ forgeItems: newForgeItems });
           }
@@ -810,14 +846,11 @@ export function effectivePriority(task: Task): TaskPriority {
   // If explicitly done, return the original priority to avoid confusion in history
   if (task.status === 'done') return task.priority;
 
+  // Only bump to high if overdue. For at-risk (due soon), we show a visual warning 
+  // but respect the user's original priority setting to avoid confusion.
   if (isOverdue(task)) return 'high';
+
   return task.priority;
-  // If at risk (due soon), bump priority by one level
-  if (isAtRisk(task)) {
-    if (task.priority === 'low') return 'medium';
-    if (task.priority === 'medium') return 'high';
-    return 'high';
-  }
 }
 
 export function isToday(dateStr?: string): boolean {
