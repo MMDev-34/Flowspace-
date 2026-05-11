@@ -1,5 +1,6 @@
 import { useAppStore, type CalendarEvent, type ForgeItem, type QuickLink } from "../store/useAppStore";
 import { useEffect, useMemo, useState, useRef } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 import {
   LineChart,
@@ -37,6 +38,8 @@ const allocation = [
   { name: "Design", value: 18, color: "hsl(142 71% 45%)" },
   { name: "Other", value: 17, color: "hsl(38 92% 50%)" },
 ];
+
+const COLORS = ['#1a1b1e', '#1e3a8a', '#2563eb', '#3b82f6', '#60a5fa'];
 
 function StatCard({
   label,
@@ -456,13 +459,20 @@ function ArcRacerGauge({
   );
 }
 
+let isAppInitialized = false;
+
 export default function DashboardPage() {
   const { tasks, logs, log, calendarEvents, forgeItems, quickLinks } = useAppStore();
 
   const dashboardLogged = useRef(false);
   useEffect(() => {
     if (!dashboardLogged.current) {
-      log("system", "Dashboard loaded", "System");
+      if (!isAppInitialized) {
+        log("system", "DASHBOARD INITIATED 🚀", "System");
+        isAppInitialized = true;
+      } else {
+        log("system", "Dashboard Loaded", "System");
+      }
       dashboardLogged.current = true;
     }
   }, [log]);
@@ -472,15 +482,12 @@ export default function DashboardPage() {
     [tasks],
   );
 
-  const heatmap = useMemo(() => Array.from({ length: 16 * 7 }, (_, i) => (i * 137) % 5), []);
-
-  const recentLogs = useMemo(
-    () =>
-      [...logs]
-        .reverse()
-        .filter((l) => !(l.type === "system" && l.msg === "Dashboard loaded"))
-        .slice(0, 5),
-    [logs],
+  const recentLogs = useMemo(() =>
+    [...logs]
+      .reverse()
+      .filter((l) => !(l.type === "system" && (l.msg === "Dashboard loaded" || l.msg === "Dashboard Loaded")))
+      .slice(0, 5),
+    [logs]
   );
 
   const [hasRecentLog, setHasRecentLog] = useState(false);
@@ -524,6 +531,34 @@ export default function DashboardPage() {
     }
   }, [moodVal]);
 
+  const getDailyActivity = useAppStore((s) => s.getDailyActivity);
+
+  const heatmapData = useMemo(() => {
+    const dailyData = getDailyActivity(30);
+    return dailyData.map(day => {
+      const d = new Date(day.date);
+      const count = day.total;
+
+      // Calculate intensity (0-4) based on ActivityHeatmap logic
+      let val = 0;
+      if (count > 0) {
+        if (count <= 2) val = 1;
+        else if (count <= 5) val = 2;
+        else if (count <= 8) val = 3;
+        else val = 4;
+      }
+
+      return {
+        val,
+        count,
+        date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        full: d
+      };
+    });
+  }, [getDailyActivity]);
+
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -558,8 +593,104 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="widget lg:col-span-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* 30-Day Activity Heatmap Widget */}
+        <div className="widget !p-4 flex flex-col justify-between h-full">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div className="widget-title text-[10px] uppercase tracking-wider opacity-60">30-Day Activity Pulse</div>
+              <div className="flex gap-1.5 items-center">
+                <span className="text-[9px] font-mono text-muted-foreground">Range</span>
+                <div className="flex gap-0.5">
+                  {COLORS.map(c => <div key={c} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: c }} />)}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-end gap-[2px] h-14 relative">
+              {heatmapData.map((d, i) => (
+                <div
+                  key={i}
+                  className="flex-1 relative h-full flex items-end"
+                  onMouseEnter={() => setHoverIdx(i)}
+                  onMouseLeave={() => setHoverIdx(null)}
+                >
+                  <motion.div
+                    className="w-full rounded-t-sm cursor-pointer relative"
+                    initial={{ height: 0 }}
+                    animate={{ height: `${20 + (d.val / 4) * 80}%` }}
+                    transition={{ delay: i * 0.01, duration: 0.5 }}
+                    style={{
+                      backgroundColor: COLORS[d.val === 0 ? 0 : d.val],
+                      opacity: d.val === 0 ? 0.15 : 1
+                    }}
+                  />
+
+                  <AnimatePresence>
+                    {hoverIdx === i && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, x: '-50%' }}
+                        animate={{ opacity: 1, y: 0, x: '-50%' }}
+                        exit={{ opacity: 0, y: 5, x: '-50%' }}
+                        className="absolute bottom-full left-1/2 mb-2 p-2 bg-popover/95 backdrop-blur-md border border-border/50 rounded-lg shadow-xl z-50 text-center pointer-events-none min-w-[80px]"
+                      >
+                        <div className="text-[9px] font-bold text-white mb-0.5">{d.date}</div>
+                        <div className="text-[10px] font-mono text-primary font-bold">{d.val * 25}%</div>
+                        <div className="text-[7px] uppercase tracking-tighter opacity-50">Productivity</div>
+                        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-popover border-r border-b border-border/50 rotate-45" />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-between mt-4 pt-2 border-t border-white/5">
+            <span className="text-[8px] font-mono text-muted-foreground uppercase">{heatmapData[0].date}</span>
+            <span className="text-[8px] font-mono text-muted-foreground uppercase text-right">Today</span>
+          </div>
+        </div>
+
+        {/* Time Allocation Widget moved for balance */}
+        <div className="widget !p-4">
+          <div className="widget-title mb-4 text-[10px] uppercase tracking-wider opacity-60">Focus Allocation</div>
+          <div className="flex items-center gap-3">
+            <div className="w-[100px] h-[100px] shrink-0">
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie
+                    data={allocation}
+                    dataKey="value"
+                    innerRadius={28}
+                    outerRadius={45}
+                    paddingAngle={2}
+                  >
+                    {allocation.map((e, i) => (
+                      <Cell key={i} fill={e.color} stroke="none" />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex-1 space-y-1.5">
+              {allocation.map((a) => (
+                <div key={a.name} className="flex items-center gap-2 text-[10px]">
+                  <span
+                    className="w-1.5 h-1.5 rounded-full"
+                    style={{ background: a.color }}
+                  />
+                  <span className="flex-1 text-muted-foreground truncate">{a.name}</span>
+                  <span className="font-mono text-[9px]">{a.value}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4">
+        <div className="widget">
           <div className="flex items-center justify-between mb-4">
             <span className="widget-title">Weekly Activity</span>
             <span className="chip chip-cyan">7 DAYS</span>
@@ -607,69 +738,10 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="widget">
-          <div className="widget-title mb-4">Time Allocation</div>
-          <div className="flex items-center gap-3">
-            <div className="w-[110px] h-[110px] shrink-0">
-              <ResponsiveContainer>
-                <PieChart>
-                  <Pie
-                    data={allocation}
-                    dataKey="value"
-                    innerRadius={32}
-                    outerRadius={50}
-                    paddingAngle={2}
-                  >
-                    {allocation.map((e, i) => (
-                      <Cell key={i} fill={e.color} stroke="none" />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="flex-1 space-y-2">
-              {allocation.map((a) => (
-                <div key={a.name} className="flex items-center gap-2 text-xs">
-                  <span
-                    className="w-2 h-2 rounded-full"
-                    style={{ background: a.color }}
-                  />
-                  <span className="flex-1 text-muted-foreground">{a.name}</span>
-                  <span className="font-mono">{a.value}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
       </div>
-      {/* Heatmap + Upcoming + Live Feed */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="widget lg:col-span-2">
-          <div className="widget-title mb-4">Activity Heatmap</div>
-          <div
-            className="grid gap-[3px]"
-            style={{ gridTemplateColumns: "repeat(16, minmax(0, 1fr))" }}
-          >
-            {heatmap.map((v, i) => {
-              const colors = [
-                "hsl(240 8% 10%)",
-                "hsl(184 100% 50% / 0.2)",
-                "hsl(184 100% 50% / 0.4)",
-                "hsl(184 100% 50% / 0.7)",
-                "hsl(184 100% 50%)",
-              ];
-              return (
-                <div
-                  key={i}
-                  className="aspect-square rounded-sm"
-                  style={{ background: colors[v] }}
-                />
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="space-y-4">
+      {/* Upcoming + Live Feed */}
+      <div className="grid grid-cols-1 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 
           <div className="widget !p-3">
             <div className="flex items-center justify-between mb-2.5">
@@ -808,7 +880,7 @@ export default function DashboardPage() {
             </div>
             <div className="space-y-1 max-h-[160px] overflow-y-auto">
               {recentLogs.filter(
-                (l) => !(l.type === "system" && l.msg === "Dashboard loaded"),
+                (l) => !(l.type === "system" && (l.msg === "Dashboard loaded" || l.msg === "Dashboard Loaded")),
               ).length === 0 && (
                   <div className="text-[10px] text-muted-foreground py-4 text-center font-mono">
                     Waiting for events...
@@ -816,7 +888,7 @@ export default function DashboardPage() {
                 )}
               {recentLogs
                 .filter(
-                  (l) => !(l.type === "system" && l.msg === "Dashboard loaded"),
+                  (l) => !(l.type === "system" && (l.msg === "Dashboard loaded" || l.msg === "Dashboard Loaded")),
                 )
                 .slice(0, 5)
                 .map((l) => {
@@ -848,7 +920,8 @@ export default function DashboardPage() {
                                   : l.type === "calendar"
                                     ? "border-l-fuchsia-400"
                                     : "border-l-violet-400";
-                  const textColor =
+                  const isInitiated = l.msg === "🚀";
+                  const textColor = isInitiated ? "text-white" :
                     l.type === "error"
                       ? "text-red-400"
                       : l.type === "warn"
@@ -899,7 +972,7 @@ export default function DashboardPage() {
                       <span className="font-mono text-muted-foreground whitespace-nowrap text-[8px]">
                         {dateStr} {timeStr}
                       </span>{" "}
-                      <span className={cn("truncate", textColor)}>
+                      <span className={cn("truncate", textColor, isInitiated && "font-bold text-sm")}>
                         {l.msg}
                       </span>
                     </div>

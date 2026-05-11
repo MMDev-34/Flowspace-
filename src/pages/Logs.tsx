@@ -1,6 +1,6 @@
 import { useAppStore, type LogType } from '../store/useAppStore';
 import { useMemo, useState } from 'react';
-import { Search, Trash2, Check, Info, AlertTriangle, Clock, Zap, Settings, Calendar, FileText, Flame, Link as LinkIcon, Filter, X } from 'lucide-react';
+import { Search, Trash2, Check, Info, AlertTriangle, Clock, Zap, Settings, Calendar, FileText, Flame, Link as LinkIcon, Filter, X, Rocket } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -256,8 +256,9 @@ export default function LogsPage() {
               {/* Entries */}
               <div className="space-y-1">
                 {entries.map(l => {
+                  const isInitiated = l.msg === 'DASHBOARD INITIATED';
                   const meta = typeMeta[l.type];
-                  const Icon = meta.icon;
+                  const Icon = isInitiated ? Rocket : meta.icon;
                   const logDate = new Date(l.timestamp);
                   const timeStr = logDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
                   const dateStr = logDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -267,16 +268,16 @@ export default function LogsPage() {
                       key={l.id}
                       className={cn(
                         'flex items-center gap-3 px-3 py-2.5 rounded-md border-l-2 transition-colors hover:bg-hover/30',
-                        meta.border,
-                        meta.bg
+                        isInitiated ? 'bg-gradient-brand border-l-white border-0 shadow-sm' : cn(meta.border, meta.bg)
                       )}
                     >
-                      <Icon className={cn('w-3.5 h-3.5 shrink-0', meta.color)} />
-                      <span className="font-mono text-[10px] text-muted-foreground whitespace-nowrap">
+                      {/* Show white icon for initiated, colored icon for others */}
+                      <Icon className={cn('w-3.5 h-3.5 shrink-0', isInitiated ? 'text-white' : meta.color)} />
+                      <span className={cn("font-mono text-[10px] whitespace-nowrap", isInitiated ? "text-white/70" : "text-muted-foreground")}>
                         {dateStr} · {timeStr}
                       </span>
-                      <span className={cn('chip text-[9px]', meta.chip)}>{l.category}</span>
-                      <span className="text-xs truncate flex-1">{l.msg}</span>
+                      <span className={cn('chip text-[9px]', isInitiated ? 'bg-white/20 text-white border-white/30' : meta.chip)}>{l.category}</span>
+                      <span className={cn("text-xs truncate flex-1", isInitiated ? "text-white font-bold text-sm" : "text-foreground")}>{l.msg}</span>
                     </div>
                   );
                 })}

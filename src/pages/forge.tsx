@@ -20,12 +20,8 @@ const HABIT_TEMPLATES = [
 ];
 
 /* ── Helpers ── */
-function isToday(dateStr?: string): boolean {
-    if (!dateStr) return false;
-    const d = new Date(dateStr);
-    const now = new Date();
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-}
+// Helper removed as it was unused
+
 
 /* ── Toast ── */
 function Toast({ msg, action, onAction, onClose }: { msg: string; action?: string; onAction?: () => void; onClose: () => void }) {
@@ -40,7 +36,7 @@ function Toast({ msg, action, onAction, onClose }: { msg: string; action?: strin
 }
 
 /* ── Header ── */
-const ForgeHeader = memo(function ForgeHeader({ streak, onAdd, onReset }: { streak: number; onAdd: () => void; onReset: () => void }) {
+function ForgeHeader({ streak, onAdd, onReset }: { streak: number; onAdd: () => void; onReset: () => void }) {
     return (
         <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -69,7 +65,7 @@ const ForgeHeader = memo(function ForgeHeader({ streak, onAdd, onReset }: { stre
             </div>
         </div>
     );
-});
+}
 
 /* ── Multi-Color Progress Ring ── */
 const MultiColorHabitRing = memo(function MultiColorHabitRing({
@@ -236,7 +232,6 @@ const TodayRings = memo(function TodayRings({
 const WeekStrip = memo(function WeekStrip({ data }: { data: { label: string; pct: number; completed: number; total: number }[] }) {
     const avg = Math.round(data.reduce((s, d) => s + d.pct, 0) / 7);
     const best = data.reduce((a, b) => a.pct > b.pct ? a : b);
-    const perfectDays = data.filter(d => d.pct === 100).length;
 
     return (
         <div className="widget p-5 h-full flex flex-col">
@@ -738,53 +733,42 @@ const Timeline = memo(function Timeline({ forgeItems }: { forgeItems: ForgeItem[
 /* ── Slide-over Panel ── */
 function AddPanel({ open, onClose, editingId, onSave, forgeItems }: {
     open: boolean; onClose: () => void; editingId: string | null;
-    onSave: (data: any) => void; forgeItems: ForgeItem[];
+    onSave: (data: Partial<ForgeItem>) => void; forgeItems: ForgeItem[];
 }) {
-    const [name, setName] = useState('');
-    const [icon, setIcon] = useState('🏃');
-    const [color, setColor] = useState('#00d4ff');
-    const [type, setType] = useState<'daily' | 'target'>('daily');
-    const [target, setTarget] = useState(10);
-    const [unit, setUnit] = useState('times');
+    const initialItem = useMemo(() => {
+        if (editingId) return forgeItems.find(i => i.id === editingId);
+        return null;
+    }, [editingId, forgeItems]);
+
+    const [name, setName] = useState(initialItem?.name || '');
+    const [icon, setIcon] = useState(initialItem?.icon || '🏃');
+    const [color, setColor] = useState(() => {
+        if (initialItem) return initialItem.color;
+        const usedColors = new Set(forgeItems.map(i => i.color));
+        return ITEM_COLORS.find(c => !usedColors.has(c)) || ITEM_COLORS[forgeItems.length % ITEM_COLORS.length];
+    });
+    const [type, setType] = useState<'daily' | 'target'>(initialItem?.type || 'daily');
+    const [target, setTarget] = useState(initialItem?.targetCount || 10);
+    const [unit, setUnit] = useState(initialItem?.unit || 'times');
     const [showTemplates, setShowTemplates] = useState(false);
     const [error, setError] = useState('');
-    const [colorWarning, setColorWarning] = useState('');
 
     useEffect(() => {
         if (open) {
             document.body.style.overflow = 'hidden';
-            if (editingId) {
-                const item = forgeItems.find(i => i.id === editingId);
-                if (item) {
-                    setName(item.name); setIcon(item.icon); setColor(item.color);
-                    setType(item.type); setTarget(item.targetCount || 10); setUnit(item.unit || 'times');
-                }
-            } else {
-                // Reset for new item
-                setName(''); setIcon('🏃'); setType('daily');
-                // Suggest a unique color
-                const usedColors = new Set(forgeItems.map(i => i.color));
-                const availableColor = ITEM_COLORS.find(c => !usedColors.has(c)) || ITEM_COLORS[forgeItems.length % ITEM_COLORS.length];
-                setColor(availableColor);
-            }
         }
         else {
             document.body.style.overflow = '';
-            setColorWarning('');
         }
         return () => { document.body.style.overflow = ''; };
-    }, [open, editingId, forgeItems]);
+    }, [open]);
 
     // Check color uniqueness
-    useEffect(() => {
-        if (!open) return;
+    const calculatedColorWarning = useMemo(() => {
+        if (!open) return '';
         const colorLower = color.toLowerCase();
         const conflict = forgeItems.find(i => i.id !== editingId && i.color.toLowerCase() === colorLower);
-        if (conflict) {
-            setColorWarning(conflict.name);
-        } else {
-            setColorWarning('');
-        }
+        return conflict ? conflict.name : '';
     }, [color, forgeItems, editingId, open]);
 
     const handleSave = () => {
@@ -810,7 +794,7 @@ function AddPanel({ open, onClose, editingId, onSave, forgeItems }: {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-5 space-y-5 custom-scrollbar">
-                    {colorWarning && (
+                    {calculatedColorWarning && (
                         <motion.div
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: 'auto' }}
@@ -821,7 +805,7 @@ function AddPanel({ open, onClose, editingId, onSave, forgeItems }: {
                                 <div className="space-y-1">
                                     <p className="text-[10px] font-bold text-amber-500 font-mono uppercase leading-none">Color Conflict</p>
                                     <p className="text-[9px] text-muted-foreground font-mono leading-tight">
-                                        This color is already used by <span className="text-amber-400 font-bold">"{colorWarning}"</span>.
+                                        This color is already used by <span className="text-amber-400 font-bold">"{calculatedColorWarning}"</span>.
                                         Please use a different color for clarity.
                                     </p>
                                 </div>
@@ -905,15 +889,15 @@ function AddPanel({ open, onClose, editingId, onSave, forgeItems }: {
                 <div className="p-5 border-t border-border">
                     <button
                         onClick={handleSave}
-                        disabled={!!colorWarning}
+                        disabled={!!calculatedColorWarning}
                         className={cn(
                             "w-full py-3 rounded-xl text-xs font-bold font-mono transition-all",
-                            colorWarning
+                            calculatedColorWarning
                                 ? "bg-muted text-muted-foreground cursor-not-allowed opacity-50"
                                 : "bg-cyan-500 text-black hover:bg-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.2)]"
                         )}
                     >
-                        {colorWarning ? 'Resolve Conflict' : (editingId ? 'Save Changes' : 'Create Item')}
+                        {calculatedColorWarning ? 'Resolve Conflict' : (editingId ? 'Save Changes' : 'Create Item')}
                     </button>
                 </div>
             </div>
@@ -939,8 +923,6 @@ export default function ForgePage() {
     // Stats for ring and summaries
     const habitsDone = dailyItems.filter(i => i.completions[todayStr]).length;
     const habitsTotal = dailyItems.length;
-    const goalsDone = targetItems.filter(i => i.targetCount && (i.currentCount || 0) >= i.targetCount).length;
-    const goalsTotal = targetItems.length;
 
     // Unified completion data for the multi-color ring (Habits ONLY)
     const completedItems = useMemo(() => {
@@ -998,9 +980,12 @@ export default function ForgePage() {
     // Panel
     const openAdd = () => { setEditingId(null); setPanelOpen(true); };
     const openEdit = (item: ForgeItem) => { setEditingId(item.id); setPanelOpen(true); };
-    const handleSave = (data: any) => {
+    const handleSave = (data: Partial<ForgeItem>) => {
         if (editingId) updateForgeItem(editingId, data);
-        else addForgeItem(data);
+        else {
+            // Use type assertion to match Omit<ForgeItem, ...> required by addForgeItem
+            addForgeItem(data as Parameters<typeof addForgeItem>[0]);
+        }
     };
 
     // Reset
@@ -1105,7 +1090,14 @@ export default function ForgePage() {
             <Timeline forgeItems={forgeItems} />
 
             {/* Slide-over panel */}
-            <AddPanel open={panelOpen} onClose={() => setPanelOpen(false)} editingId={editingId} onSave={handleSave} forgeItems={forgeItems} />
+            <AddPanel
+                key={panelOpen ? (editingId || 'new') : 'closed'}
+                open={panelOpen}
+                onClose={() => setPanelOpen(false)}
+                editingId={editingId}
+                onSave={handleSave}
+                forgeItems={forgeItems}
+            />
 
             {/* Delete confirmation */}
             {showDelete && (

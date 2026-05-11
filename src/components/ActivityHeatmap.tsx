@@ -107,10 +107,9 @@ export function ActivityHeatmap({
 
     const getDailyActivity = useAppStore((s) => s.getDailyActivity);
     const getActivityStreak = useAppStore((s) => s.getActivityStreak);
-    const activityEvents = useAppStore((s) => s.activityEvents);
 
-    const data = useMemo(() => getDailyActivity(days), [getDailyActivity, days, activityEvents.length]);
-    const { current, longest } = useMemo(() => getActivityStreak(), [getActivityStreak, activityEvents.length]);
+    const data = useMemo(() => getDailyActivity(days), [getDailyActivity, days]);
+    const { current, longest } = useMemo(() => getActivityStreak(), [getActivityStreak]);
 
     const todayStr = new Date().toISOString().split('T')[0];
 

@@ -2,6 +2,31 @@ import { useMemo, useState } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { ActivityHeatmap } from '@/components/ActivityHeatmap';
 
+const StatCard = ({
+    label,
+    value,
+    sub,
+    accent,
+    icon,
+}: {
+    label: string;
+    value: string | number;
+    sub?: string;
+    accent?: string;
+    icon?: string;
+}) => (
+    <div className="widget flex flex-col gap-1 min-w-[140px]">
+        <div className="flex items-center justify-between">
+            <span className="widget-title">{label}</span>
+            {icon && <span className="text-sm">{icon}</span>}
+        </div>
+        <div className="stat-val" style={{ color: accent || 'inherit' }}>
+            {value}
+        </div>
+        {sub && <span className="text-[10px] text-muted-foreground font-mono">{sub}</span>}
+    </div>
+);
+
 export default function InsightsPage() {
     const {
         tasks,
@@ -14,11 +39,14 @@ export default function InsightsPage() {
 
     const [range, setRange] = useState<'7d' | '30d' | '90d' | '1y'>('30d');
 
-    const now = new Date();
-    const rangeDays = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 }[range];
-    const cutoff = new Date(now.getTime() - rangeDays * 24 * 60 * 60 * 1000);
-    const isInRange = (iso: string) => new Date(iso) >= cutoff;
-    const todayStr = now.toISOString().split('T')[0];
+    const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+    const isInRange = useMemo(() => {
+        const rangeDaysMap = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 };
+        const d = rangeDaysMap[range];
+        const cutoff = new Date(new Date().getTime() - d * 24 * 60 * 60 * 1000);
+        return (iso: string) => new Date(iso) >= cutoff;
+    }, [range]);
 
     const stats = useMemo(() => {
         const doneTasks = tasks.filter(t => t.status === 'done');
@@ -63,32 +91,7 @@ export default function InsightsPage() {
             productivityScore,
             trend,
         };
-    }, [tasks, pomoHistory, forgeItems, notes, calendarEvents, quickLinks, rangeDays, todayStr]);
-
-    const StatCard = ({
-        label,
-        value,
-        sub,
-        accent,
-        icon,
-    }: {
-        label: string;
-        value: string | number;
-        sub?: string;
-        accent?: string;
-        icon?: string;
-    }) => (
-        <div className="widget flex flex-col gap-1 min-w-[140px]">
-            <div className="flex items-center justify-between">
-                <span className="widget-title">{label}</span>
-                {icon && <span className="text-sm">{icon}</span>}
-            </div>
-            <div className="stat-val" style={{ color: accent || 'inherit' }}>
-                {value}
-            </div>
-            {sub && <span className="text-[10px] text-muted-foreground font-mono">{sub}</span>}
-        </div>
-    );
+    }, [tasks, pomoHistory, forgeItems, notes, calendarEvents, quickLinks, todayStr, isInRange]);
 
     return (
         <div className="p-6 max-w-6xl mx-auto space-y-6 animate-fade-in">
